@@ -21,11 +21,24 @@
     "packages/*"
   ],
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1085.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "marked": "^18.0.6",
+    "multer": "^2.2.0",
+    "pdf-parse": "1.1.4",
+    "pg": "^8.16.0",
+    "zod": "^3.25.76",
     "zone.js": "^0.15.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
     "@types/node": "^22.15.0",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.15.0",
     "typescript": "^5.9.0"
   }
 }

@@ -31,14 +31,15 @@ export default class IngestionService {
       let text = extraction.text
 
       if (extraction.requiresOcr) {
-        text = await this.ocr.transcribe(document)
-        if (!text) {
+        const ocrText = await this.ocr.transcribe(document)
+        if (!ocrText) {
           await this.documents.setStage(workspaceId, documentId, 'needs_ocr', {
             requiresOcr: true,
             error: 'OCR is required. Configure Bedrock credentials and a Bedrock OCR model, then process the file again.',
           })
           return publicDocument(await this.documents.get(workspaceId, documentId))
         }
+        text = ocrText
       }
 
       const normalized = normalizeText(text)
