@@ -17,9 +17,11 @@
     "apps/*",
     "packages/*"
   ],
+  "dependencies": {
+    "zone.js": "^0.15.0"
+  },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "typescript": "^5.9.0"
   }
 }
-
