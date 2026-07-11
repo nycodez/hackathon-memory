@@ -4,9 +4,11 @@ import {
   type ContentBlock,
   type ImageFormat,
 } from '@aws-sdk/client-bedrock-runtime'
+import { PDFDocument } from 'pdf-lib'
 import { optionalEnv } from '../config/env.js'
 
 const requestTimeoutMs = 45_000
+const pdfBatchSize = 2
 
 export interface OcrSource {
   mimeType: string
@@ -24,6 +26,19 @@ export default class BedrockOcrService {
     const modelId = this.modelId()
     if (!this.isConfigured() || !modelId) return null
 
+    const batches = source.mimeType === 'application/pdf'
+      ? await pdfBatches(source.rawData)
+      : [{ bytes: new Uint8Array(source.rawData), label: 'Image' }]
+
+    const transcriptions = await Promise.all(batches.map((batch) => this.transcribeBatch(
+      modelId,
+      attachment(source.mimeType, batch.bytes, batch.label),
+      batch.label
+    )))
+    return transcriptions.filter(Boolean).join('\n\n').trim() || null
+  }
+
+  private async transcribeBatch(modelId: string, file: ContentBlock, label: string): Promise<string> {
     const command = new ConverseCommand({
       modelId,
       system: [{
@@ -37,11 +52,11 @@ export default class BedrockOcrService {
       messages: [{
         role: 'user',
         content: [
-          attachment(source),
-          { text: 'Transcribe every readable word in this document. Return only the transcription.' },
+          file,
+          { text: `Transcribe every readable word in ${label}. Return only the transcription.` },
         ],
       }],
-      inferenceConfig: { maxTokens: 8_000, temperature: 0 },
+      inferenceConfig: { maxTokens: 4_000, temperature: 0 },
     })
 
     const controller = new AbortController()
@@ -53,9 +68,13 @@ export default class BedrockOcrService {
         .filter((value: string | undefined): value is string => Boolean(value))
         .join('\n')
         .trim()
-      return text || null
-    } catch {
-      throw new Error('Bedrock OCR failed. Verify AWS credentials, model access, and BEDROCK_OCR_MODEL_ID.')
+      if (!text) throw new Error('Bedrock returned an empty transcription')
+      return `${label}\n${text}`
+    } catch (error) {
+      const detail = providerError(error)
+      console.error('Bedrock OCR batch failed', { label, ...detail })
+      if (detail.name === 'AbortError') throw new Error(`Bedrock OCR timed out while processing ${label}.`)
+      throw new Error(`Bedrock OCR could not process ${label}.`)
     } finally {
       clearTimeout(timeout)
     }
@@ -73,12 +92,33 @@ export default class BedrockOcrService {
   }
 }
 
-function attachment(source: OcrSource): ContentBlock {
-  const bytes = new Uint8Array(source.rawData)
-  if (source.mimeType.startsWith('image/')) {
-    return { image: { format: imageFormat(source.mimeType), source: { bytes } } }
+function attachment(mimeType: string, bytes: Uint8Array, label: string): ContentBlock {
+  if (mimeType.startsWith('image/')) {
+    return { image: { format: imageFormat(mimeType), source: { bytes } } }
   }
-  return { document: { format: 'pdf', name: 'Uploaded document', source: { bytes } } }
+  return { document: { format: 'pdf', name: label, source: { bytes } } }
+}
+
+async function pdfBatches(rawData: Buffer): Promise<Array<{ bytes: Uint8Array; label: string }>> {
+  const source = await PDFDocument.load(rawData)
+  const pageCount = source.getPageCount()
+  if (pageCount <= pdfBatchSize) {
+    return [{ bytes: new Uint8Array(rawData), label: pageLabel(0, pageCount) }]
+  }
+
+  const batches: Array<{ bytes: Uint8Array; label: string }> = []
+  for (let start = 0; start < pageCount; start += pdfBatchSize) {
+    const end = Math.min(start + pdfBatchSize, pageCount)
+    const output = await PDFDocument.create()
+    const pages = await output.copyPages(source, Array.from({ length: end - start }, (_, index) => start + index))
+    for (const page of pages) output.addPage(page)
+    batches.push({ bytes: await output.save(), label: pageLabel(start, end) })
+  }
+  return batches
+}
+
+function pageLabel(start: number, end: number): string {
+  return end - start === 1 ? `Page ${start + 1}` : `Pages ${start + 1}-${end}`
 }
 
 function imageFormat(mimeType: string): ImageFormat {
@@ -92,4 +132,12 @@ function imageFormat(mimeType: string): ImageFormat {
 function textBlock(block: unknown): string | undefined {
   if (typeof block !== 'object' || block === null || !('text' in block)) return undefined
   return typeof block.text === 'string' ? block.text : undefined
+}
+
+function providerError(error: unknown): { name: string; message: string; status?: number } {
+  if (!(error instanceof Error)) return { name: 'UnknownError', message: 'Unknown provider error' }
+  const metadata = '$metadata' in error && typeof error.$metadata === 'object' && error.$metadata !== null
+    ? error.$metadata as { httpStatusCode?: number }
+    : undefined
+  return { name: error.name, message: error.message, status: metadata?.httpStatusCode }
 }
