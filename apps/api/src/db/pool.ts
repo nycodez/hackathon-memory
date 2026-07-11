@@ -2,22 +2,22 @@ import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg
 import { requireEnv, useDatabaseSsl } from '../config/env.js'
 
 declare global {
-  var hackathonFrameworkPool: Pool | undefined
+  var hackathonMemoryPool: Pool | undefined
 }
 
 export function getPool(): Pool {
-  if (!globalThis.hackathonFrameworkPool) {
-    globalThis.hackathonFrameworkPool = new Pool({
+  if (!globalThis.hackathonMemoryPool) {
+    globalThis.hackathonMemoryPool = new Pool({
       connectionString: requireEnv('DATABASE_URL'),
       max: Number(process.env.PG_POOL_MAX ?? 5),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
-      options: '-c statement_timeout=15000',
+      query_timeout: 15_000,
       ssl: useDatabaseSsl() ? { rejectUnauthorized: false } : undefined,
     })
   }
 
-  return globalThis.hackathonFrameworkPool
+  return globalThis.hackathonMemoryPool
 }
 
 export function query<T extends QueryResultRow = QueryResultRow>(
@@ -41,4 +41,3 @@ export async function transaction<T>(work: (client: PoolClient) => Promise<T>): 
     client.release()
   }
 }
-

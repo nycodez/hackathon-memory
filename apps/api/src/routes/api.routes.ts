@@ -9,6 +9,7 @@ import ChatService from '../services/chat_service.js'
 import IngestionService from '../services/ingestion_service.js'
 import { VECTOR_DIMENSIONS } from '../services/vector_service.js'
 import { workspaceId } from '../services/workspace_service.js'
+import memoryRoutes from './memory.routes.js'
 
 const router = Router()
 const documents = new DocumentsRepository()
@@ -35,21 +36,33 @@ const createFolderSchema = z.object({
   parentId: optionalFolderIdSchema.optional().default(null),
 })
 
+router.use('/memory', memoryRoutes)
+
 router.get('/health', async (_req, res) => {
   try {
-    await query('SELECT 1')
+    const health = await query<{ vector_available: boolean; indexed_documents: number }>(
+      `SELECT
+         EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS vector_available,
+         (SELECT count(DISTINCT document_id)::int FROM document_chunks) AS indexed_documents`
+    )
+    const row = health.rows[0]
+    const vectorAvailable = Boolean(row?.vector_available)
     res.json({ success: true, data: {
-      service: 'hackathon-framework',
-      status: 'ok',
+      service: 'hackathon-memory',
+      status: vectorAvailable ? 'ok' : 'degraded',
       database: 'connected',
+      vector: vectorAvailable ? 'available' : 'unavailable',
+      indexedDocuments: Number(row?.indexed_documents ?? 0),
       vectorDimensions: VECTOR_DIMENSIONS,
       now: new Date().toISOString(),
     } })
   } catch {
     res.status(503).json({ success: false, data: {
-      service: 'hackathon-framework',
+      service: 'hackathon-memory',
       status: 'degraded',
       database: 'unavailable',
+      vector: 'unavailable',
+      indexedDocuments: 0,
       vectorDimensions: VECTOR_DIMENSIONS,
       now: new Date().toISOString(),
     } })

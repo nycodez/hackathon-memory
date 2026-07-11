@@ -8,6 +8,7 @@
   "regions": ["sin1"],
   "functions": {
     "api/**/*.ts": {
+      "includeFiles": "packages/shared/**",
       "maxDuration": 60
     }
   },

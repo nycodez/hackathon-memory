@@ -1,46 +1,61 @@
-# Hackathon Framework
+# Hackathon Memory
 
-A clean Angular + Express starter for document-grounded hackathon products. It deploys as one Vercel project and uses PostgreSQL 17 with pgvector as the durable source of truth.
+Organizational AI Memory built as a governed capability layer on top of the Hackathon Framework Learning Library.
 
-## Included
+The Learning Library remains the evidence substrate for uploads, extraction, OCR, summaries, chunks, embeddings, hybrid retrieval, citations, conversations, and retrieval traces. Organizational Memory adds reusable capability assets, versions, provenance, stewardship, decisions, outcomes, recommendations, installations, deterministic skill runs, and audit events.
 
-- Angular 21 standalone frontend with a minimal left navigation: Home, Query, Results, and Library
-- Chat-style Query page with a bottom composer and source citations
-- Read-only Decision Console with persisted, observable retrieval and response-policy events
-- Durable, resumable conversation sessions on the Results page
-- Nested Library folders with breadcrumb navigation and folder-aware uploads
-- Small-file upload with visible ingestion, OCR, summarization, chunking, and vectorization states
-- Express API packaged as a Vercel Function under `/api`
-- PostgreSQL migrations with workspace scoping, full-text search, `vector(1024)`, and HNSW indexing
-- Dependency-free feature-hash embeddings, so retrieval works before an external embedding provider is added
-- Optional Claude OCR for scanned PDFs and images
+## Killer moment
+
+Mai Tran leaves the organization. Dara Kim can still discover Mai's portfolio health-check workflow, understand why it worked, verify its evidence and governance, install the current version, run it, and steward it without erasing Mai's authorship.
+
+## Product surfaces
+
+The original framework navigation is preserved:
+
+- Home
+- Query
+- Results
+- Library
+
+An HR divider marks the start of the hackathon customization:
+
+- Capabilities
+- Recommendations
+- Skills
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-  B[Angular browser app] -->|/api| V[Express Vercel Function]
-  V --> R[(AWS RDS PostgreSQL 17)]
-  R --> P[pgvector + full-text indexes]
-  V -. scanned files .-> O[Optional OCR provider]
+flowchart TD
+  C[Upload or capture] --> L[Learning Library document]
+  L --> I[Extract, chunk, and embed]
+  I --> R[Hybrid retrieval]
+  L --> A[Capability asset]
+  A --> G[Versions and provenance]
+  A --> O[Decisions and outcomes]
+  P[Server-resolved actor] --> X[Governance prefilter]
+  X --> R
+  R --> D[Search and recommendations]
+  D --> U[Version-pinned install and run]
+  U --> E[Audit and provenance]
 ```
 
-The starter deliberately keeps the first deployment small:
+Canonical content tables are `knowledge_documents`, `document_chunks`, `library_folders`, and `ingestion_events`. The `capability_*` tables add organizational meaning without introducing a parallel document or embedding system.
 
-- Raw files up to 4 MB are stored in PostgreSQL `bytea`, which stays under Vercel's request-body ceiling and avoids adding object storage to the baseline.
-- Text, Markdown, CSV, JSON, HTML, and text-bearing PDFs process without an AI key.
-- Scanned PDFs and images move to `needs_ocr` until `ANTHROPIC_API_KEY` is configured.
-- Summaries are deterministic and embeddings use local feature hashing. Replace these services with challenge-specific models without changing the database or API contracts.
+See [docs/architecture.md](docs/architecture.md), [docs/demo-script.md](docs/demo-script.md), and [docs/eval-gates.md](docs/eval-gates.md).
 
-For each query, the configured lightweight Bedrock model creates a structured retrieval plan. The API uses that plan to retrieve ready workspace-scoped chunks, bounds and labels the full source passages, and sends that context with the user's question to the primary Bedrock model. No relevant chunks means no generation call.
+## Stack
 
-For a production-sized corpus, move raw objects to S3 or Vercel Blob, upload directly with signed URLs, and keep only metadata, extracted text, chunks, and vectors in PostgreSQL.
+- Angular 21 standalone frontend
+- Express API packaged for Vercel Functions
+- Neon PostgreSQL with pgvector for the live Vercel application
+- Dockerized PostgreSQL 17 with pgvector for local development
+- Dependency-free 1,024-dimension feature-hash embeddings for the deterministic path
+- Optional Bedrock query analysis and grounded response generation inherited from the framework
 
-## Local run
+## Local setup
 
 Prerequisites: Node.js 22+, pnpm 9, and Docker.
-
-Install dependencies, create the local environment file, start pgvector PostgreSQL, and migrate it:
 
 ```sh
 pnpm install
@@ -48,86 +63,73 @@ pnpm setup:local
 pnpm dev
 ```
 
+`setup:local` creates the ignored local API environment file when needed, starts PostgreSQL on port 5435, runs migrations, and idempotently seeds the clean-room memory world.
+
 - Web: `http://localhost:4200`
 - API health: `http://localhost:3333/api/health`
-- PostgreSQL: `localhost:5433` (container port `5432`; host port `5433` avoids a common local PostgreSQL conflict)
+- PostgreSQL: `localhost:5435`
 
-## AWS RDS PostgreSQL 17
+Individual database commands:
 
-1. Create an RDS PostgreSQL 17 instance in or near `ap-southeast-1`.
-2. Connect with a database owner and run `pnpm db:migrate` using the RDS `DATABASE_URL`. The migration enables `vector`, `pgcrypto`, and `unaccent`.
-3. Require TLS with `PGSSLMODE=require`.
-4. Put the database URL in Vercel environment variables; never commit it.
-5. Keep network access narrow. For a durable deployment, use Vercel Secure Compute/static egress and allow only that egress in the RDS security group.
+```sh
+pnpm db:up
+pnpm db:migrate
+pnpm db:seed:memory
+pnpm test:memory
+```
 
-The Vercel function is pinned to Singapore (`sin1`) by default to reduce latency to an RDS instance in Singapore. Change `regions` in `vercel.json` if the database lives elsewhere.
+## Neon and Vercel
 
-## Vercel deployment
+The live Vercel application uses Neon in the same pattern as the KFC hackathon application: the API keeps the standard `pg` pool, and Vercel supplies Neon's pooled PostgreSQL connection string through `DATABASE_URL`.
 
-Import this repository as one Vercel project with the repository root as the project root. The checked-in configuration:
+Create a Neon database in a region close to the Vercel function region (`sin1` by default), enable the `vector` extension through the checked-in migration, and configure these Vercel variables for Preview and Production:
 
-- installs the pnpm workspace;
-- builds the Angular browser application;
-- publishes `dist/web/browser`;
-- deploys `api/[...path].ts` as the Express function;
-- preserves `/api/*` while rewriting other application routes to Angular's `index.html`.
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Neon pooled connection string |
+| `PGSSLMODE` | `require` |
+| `PG_POOL_MAX` | `5` |
 
-Set these environment variables for Preview and Production:
+Provision the live database from a trusted local shell or CI environment with the Neon `DATABASE_URL` temporarily loaded:
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | Yes | RDS PostgreSQL connection string |
-| `PGSSLMODE` | Yes | Use `require` for RDS |
-| `PG_POOL_MAX` | No | Per-function pool size; defaults to 5 |
-| `CORS_ORIGIN` | No | Only needed when the API is called from another origin |
-| `ANTHROPIC_API_KEY` | No | Enables OCR for scanned PDFs and images |
-| `ANTHROPIC_OCR_MODEL` | No | OCR-capable model override |
-| `LLM_PROVIDER` | Bedrock use | Set to `bedrock` |
-| `AWS_REGION` | Bedrock use | Bedrock region; configured as `us-east-1` |
-| `AWS_ACCESS_KEY_ID` | Vercel Bedrock use | IAM access key stored as a Vercel secret |
-| `AWS_SECRET_ACCESS_KEY` | Vercel Bedrock use | IAM secret key stored as a Vercel secret |
-| `AWS_SESSION_TOKEN` | Temporary credentials only | Session token for temporary AWS credentials |
-| `BEDROCK_MODEL_ID` | Bedrock use | Primary Claude model or inference-profile ID |
-| `BEDROCK_CONTEXT_MAX_CHARS` | No | Maximum retrieved source text sent per query; defaults to 12,000 |
-| `BEDROCK_LIGHTWEIGHT_MODEL_ID` | Bedrock use | Lightweight Claude model or inference-profile ID |
-| `BEDROCK_EMBEDDING_MODEL_ID` | Bedrock use | Cohere embedding model ID |
+```sh
+pnpm db:migrate
+pnpm db:seed:memory
+```
 
-Run migrations before opening the deployed application. Migrations are intentionally not executed during request startup or every Vercel build.
+Migrations and seeding are intentionally not executed during a Vercel build or request startup. The local Docker connection remains isolated in the ignored `apps/api/.env` file.
 
-## API surface
+## Memory API
+
+Every route is workspace-scoped with `x-workspace-id`. Memory routes also resolve an allowlisted demo identity from `x-demo-actor-id`; role, team, status, and clearance are always loaded server-side.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | Database and vector contract health |
-| `GET` | `/api/dashboard` | Workspace counts |
-| `GET` | `/api/conversations` | Previous sessions |
-| `GET` | `/api/conversations/:id` | Resume a session |
-| `DELETE` | `/api/conversations/:id` | Delete a session and its messages |
-| `POST` | `/api/query` | Search the corpus and store a grounded exchange |
-| `GET` | `/api/library` | Current folder, breadcrumbs, child folders, and documents |
-| `POST` | `/api/library/folders` | Create a folder in the current workspace location |
-| `GET` | `/api/documents` | Corpus files and pipeline states |
-| `POST` | `/api/documents` | Ingest one multipart file |
-| `POST` | `/api/documents/:id/process` | Process or retry an ingested file |
-| `DELETE` | `/api/documents/:id` | Remove a file and its chunks |
+| `GET` | `/api/memory/actors` | Allowlisted demo actors |
+| `GET` | `/api/memory/summary` | Capability and reuse counts |
+| `GET` | `/api/memory/assets` | Accessible capability catalog |
+| `POST` | `/api/memory/assets` | Capture and index a capability |
+| `GET` | `/api/memory/assets/:assetKey` | Governed detail, evidence, and provenance |
+| `POST` | `/api/memory/search` | Permission-first hybrid capability search |
+| `POST` | `/api/memory/recommendations` | Task-oriented capability recommendations |
+| `POST` | `/api/memory/assets/:assetKey/install` | Idempotent version-pinned installation |
+| `POST` | `/api/memory/assets/:assetKey/runs` | Validated deterministic skill execution |
+| `GET` | `/api/memory/runs/:runId` | Governed persisted run detail |
+| `GET` | `/api/memory/departure-scenario` | Mai-to-Dara continuity proof |
 
-Every data query is scoped with `x-workspace-id`; the frontend currently sends `hackathon-demo`. Replace this demo header with verified identity and authorization before accepting untrusted users.
+The base Learning Library, document, conversation, and query routes remain available under `/api`.
 
-## Where to customize
+## Clean-room boundary
 
-- Brand and navigation: `apps/web/src/app/layout/app-shell.component.ts`
-- Visual system: `apps/web/src/styles.css`
-- Query/retrieval orchestration: `apps/api/src/services/chat_service.ts`
-- Bedrock grounded generation: `apps/api/src/services/bedrock_llm_service.ts`
-- Embeddings: `apps/api/src/services/vector_service.ts`
-- Extraction and OCR: `apps/api/src/services/ingestion_service.ts`
-- Database schema: `apps/api/src/db/migrations.ts`
+All people, teams, capabilities, documents, policies, decisions, outcomes, and runs used by the demo are synthetic. The repository must not ingest private Roamstay code, customer content, credentials, or production data.
 
-## Production hardening checklist
+## GitHub destination
 
-- Add authentication and derive `workspace_id` from the authenticated principal, not a browser-controlled header.
-- Move large raw uploads to object storage with signed upload URLs.
-- Add a durable queue for long-running OCR and indexing jobs.
-- Add malware scanning, MIME signature validation, rate limits, and per-workspace quotas.
-- Replace deterministic answer assembly with a grounded model call and preserve citations.
-- Add automated migration, API, retrieval, and browser tests before public use.
+- Repository: `https://github.com/nycodez/hackathon-memory`
+- Upstream framework: `https://github.com/nycodez/hackathon-framework`
+
+The local repository is configured with the new destination as `origin` and the reusable framework as `upstream`.
+
+## Production hardening
+
+The demo actor resolver is intentionally limited to a synthetic allowlist. Before accepting real users, add verified authentication, derive workspace membership from the authenticated principal, add durable background ingestion, enforce quotas and malware scanning, and move large raw uploads to object storage.

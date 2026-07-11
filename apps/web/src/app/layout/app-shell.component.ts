@@ -8,9 +8,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
   template: `
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" routerLink="/" aria-label="Knowledge Workspace home">
-          <span class="brand-mark">K</span>
-          <span class="brand-copy"><strong>Knowledge</strong><small>Workspace</small></span>
+        <a class="brand" routerLink="/" aria-label="Memory Workspace home">
+          <span class="brand-mark">M</span>
+          <span class="brand-copy"><strong>Memory</strong><small>Workspace</small></span>
         </a>
 
         <nav aria-label="Primary navigation">
@@ -26,11 +26,24 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
           <a routerLink="/library" routerLinkActive="active">
             <span aria-hidden="true">▱</span> Library
           </a>
+
+          <hr class="nav-section-divider" />
+          <span class="nav-section-label">Organizational memory</span>
+
+          <a class="custom-nav-start" routerLink="/memory" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+            <span aria-hidden="true">◇</span> Capabilities
+          </a>
+          <a routerLink="/memory/recommendations" routerLinkActive="active">
+            <span aria-hidden="true">◎</span> Recommendations
+          </a>
+          <a routerLink="/memory/skills" routerLinkActive="active">
+            <span aria-hidden="true">▦</span> Skills
+          </a>
         </nav>
 
         <div class="sidebar-foot">
           <span class="status-dot"></span>
-          <span><strong>Demo workspace</strong><small>RDS + pgvector</small></span>
+          <span><strong>Demo workspace</strong><small>Library + capability graph</small></span>
         </div>
       </aside>
 
