@@ -104,3 +104,72 @@ export interface AskResult {
   conversation: Conversation
   message: ChatMessage
 }
+
+export type SkillKind = 'office' | 'accounting'
+
+export interface AtomicSkill {
+  code: string
+  name: string
+  description: string
+  inputs: string[]
+  kind: SkillKind
+}
+
+export interface SkillGroup {
+  code: string
+  name: string
+  description: string
+  kind: SkillKind
+  skills: AtomicSkill[]
+}
+
+export interface TaskTemplate {
+  code: string
+  name: string
+  description: string
+  skills: AtomicSkill[]
+}
+
+export interface MemorizedTask {
+  id: string
+  name: string
+  description: string
+  skills: AtomicSkill[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TaskWorkspace {
+  skillGroups: SkillGroup[]
+  templates: TaskTemplate[]
+  tasks: MemorizedTask[]
+}
+
+export type TaskRecurrence = 'once' | 'daily' | 'weekly' | 'monthly'
+
+export interface TaskSchedule {
+  id: string
+  taskId: string
+  taskName: string
+  scheduledFor: string
+  timezone: string
+  recurrence: TaskRecurrence
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TaskOccurrence {
+  scheduleId: string
+  taskId: string
+  taskName: string
+  scheduledFor: string
+  timezone: string
+  recurrence: TaskRecurrence
+}
+
+export interface CalendarWindow {
+  from: string
+  to: string
+  schedules: TaskSchedule[]
+  occurrences: TaskOccurrence[]
+}

@@ -4,11 +4,14 @@ A clean Angular + Express starter for document-grounded hackathon products. It d
 
 ## Included
 
-- Angular 21 standalone frontend with a minimal left navigation: Home, Query, Results, and Library
+- Angular 21 standalone frontend with a product-style left navigation: Dashboard, Tasks, Skills, and Calendar
 - Chat-style Query page with a bottom composer and source citations
 - Read-only Decision Console with persisted, observable retrieval and response-policy events
 - Durable, resumable conversation sessions on the Results page
 - Nested Library folders with breadcrumb navigation and folder-aware uploads
+- Type-aware, full-screen previews for PDF, image, Markdown, and text files
+- Workspace task memory with 30 atomic office/accounting skills and ordered reusable task bundles
+- One-time and recurring task schedules with a six-week calendar view
 - Small-file upload with visible ingestion, OCR, summarization, chunking, and vectorization states
 - Express API packaged as a Vercel Function under `/api`
 - PostgreSQL migrations with workspace scoping, full-text search, `vector(1024)`, and HNSW indexing
@@ -109,6 +112,13 @@ Run migrations before opening the deployed application. Migrations are intention
 | `POST` | `/api/documents` | Ingest one multipart file |
 | `POST` | `/api/documents/:id/process` | Process or retry an ingested file |
 | `DELETE` | `/api/documents/:id` | Remove a file and its chunks |
+| `GET` | `/api/tasks` | List grouped atomic skills, templates, and memorized tasks |
+| `POST` | `/api/tasks` | Memorize a named ordered bundle of skills |
+| `PUT` | `/api/tasks/:id` | Update a memorized task and its ordered skills |
+| `DELETE` | `/api/tasks/:id` | Remove a memorized task |
+| `GET` | `/api/calendar` | List schedules and expanded occurrences for a bounded date window |
+| `PUT` | `/api/tasks/:id/schedule` | Add or replace a task's one-time or recurring schedule |
+| `DELETE` | `/api/calendar/schedules/:id` | Remove a task schedule |
 
 Every data query is scoped with `x-workspace-id`; the frontend currently sends `hackathon-demo`. Replace this demo header with verified identity and authorization before accepting untrusted users.
 

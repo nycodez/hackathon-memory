@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core'
 import type {
   ApiEnvelope,
   AskResult,
+  CalendarWindow,
   Conversation,
   ConversationSummary,
   DashboardSummary,
@@ -10,6 +11,10 @@ import type {
   KnowledgeDocument,
   LibraryFolder,
   LibraryListing,
+  MemorizedTask,
+  TaskRecurrence,
+  TaskSchedule,
+  TaskWorkspace,
 } from '@hackathon/shared'
 import { map, type Observable } from 'rxjs'
 
@@ -84,6 +89,52 @@ export class ApiService {
 
   deleteDocument(id: string): Observable<void> {
     return this.http.delete<void>(`/api/documents/${id}`, { headers: this.headers })
+  }
+
+  taskWorkspace(): Observable<TaskWorkspace> {
+    return this.get<TaskWorkspace>('/api/tasks')
+  }
+
+  createTask(name: string, description: string, skillCodes: string[]): Observable<MemorizedTask> {
+    return this.unwrap(this.http.post<ApiEnvelope<MemorizedTask>>(
+      '/api/tasks',
+      { name, description, skillCodes },
+      { headers: this.headers }
+    ))
+  }
+
+  updateTask(id: string, name: string, description: string, skillCodes: string[]): Observable<MemorizedTask> {
+    return this.unwrap(this.http.put<ApiEnvelope<MemorizedTask>>(
+      `/api/tasks/${id}`,
+      { name, description, skillCodes },
+      { headers: this.headers }
+    ))
+  }
+
+  deleteTask(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/tasks/${id}`, { headers: this.headers })
+  }
+
+  calendarWindow(from: string, to: string): Observable<CalendarWindow> {
+    const query = new URLSearchParams({ from, to }).toString()
+    return this.get<CalendarWindow>(`/api/calendar?${query}`)
+  }
+
+  scheduleTask(
+    taskId: string,
+    scheduledFor: string,
+    timezone: string,
+    recurrence: TaskRecurrence
+  ): Observable<TaskSchedule> {
+    return this.unwrap(this.http.put<ApiEnvelope<TaskSchedule>>(
+      `/api/tasks/${taskId}/schedule`,
+      { scheduledFor, timezone, recurrence },
+      { headers: this.headers }
+    ))
+  }
+
+  deleteTaskSchedule(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/calendar/schedules/${id}`, { headers: this.headers })
   }
 
   message(error: unknown): string {

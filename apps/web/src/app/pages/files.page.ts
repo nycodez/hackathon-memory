@@ -8,7 +8,7 @@ import { distinctUntilChanged, finalize, map, switchMap } from 'rxjs'
 import { ApiService } from '../core/api.service'
 import { MarkdownPipe } from '../core/markdown.pipe'
 
-type PreviewType = 'pdf' | 'markdown'
+type PreviewType = 'pdf' | 'image' | 'markdown' | 'text'
 type PreviewableDocument = KnowledgeDocument & { previewType: PreviewType | null }
 
 interface FilePreview {
@@ -16,7 +16,9 @@ interface FilePreview {
   loading: boolean
   error: string
   markdown: string
+  text: string
   pdfUrl: SafeResourceUrl | null
+  imageUrl: string
 }
 
 const emptyListing: LibraryListing = {
@@ -129,8 +131,12 @@ const emptyListing: LibraryListing = {
             </div>
           } @else if (filePreview.pdfUrl) {
             <iframe class="file-preview-pdf" [src]="filePreview.pdfUrl" [title]="filePreview.document.name"></iframe>
-          } @else {
+          } @else if (filePreview.imageUrl) {
+            <div class="file-preview-image-stage"><img [src]="filePreview.imageUrl" [alt]="filePreview.document.name"></div>
+          } @else if (filePreview.document.previewType === 'markdown') {
             <article class="file-preview-markdown markdown-content" [innerHTML]="filePreview.markdown | markdown"></article>
+          } @else {
+            <pre class="file-preview-text">{{ filePreview.text }}</pre>
           }
         </div>
       </section>
@@ -146,7 +152,7 @@ export class FilesPage implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly sanitizer = inject(DomSanitizer)
-  private pdfObjectUrl: string | null = null
+  private previewObjectUrl: string | null = null
   private previewRequest = 0
   protected readonly listing = signal<LibraryListing>(emptyListing)
   protected readonly currentFolderId = signal<string | null>(null)
@@ -165,7 +171,7 @@ export class FilesPage implements OnInit {
   protected readonly preview = signal<FilePreview | null>(null)
 
   constructor() {
-    this.destroyRef.onDestroy(() => this.revokePdfObjectUrl())
+    this.destroyRef.onDestroy(() => this.revokePreviewObjectUrl())
   }
 
   ngOnInit(): void {
@@ -251,8 +257,8 @@ export class FilesPage implements OnInit {
   protected openPreview(document: PreviewableDocument): void {
     if (!document.previewType) return
     const request = ++this.previewRequest
-    this.revokePdfObjectUrl()
-    this.preview.set({ document, loading: true, error: '', markdown: '', pdfUrl: null })
+    this.revokePreviewObjectUrl()
+    this.preview.set({ document, loading: true, error: '', markdown: '', text: '', pdfUrl: null, imageUrl: '' })
     setTimeout(() => this.previewClose?.nativeElement.focus())
 
     this.api.documentContent(document.id).pipe(
@@ -260,20 +266,28 @@ export class FilesPage implements OnInit {
     ).subscribe({
       next: (content) => {
         if (request !== this.previewRequest || this.preview()?.document.id !== document.id) return
-        if (document.previewType === 'pdf') {
-          this.pdfObjectUrl = URL.createObjectURL(content)
+        if (document.previewType === 'pdf' || document.previewType === 'image') {
+          this.previewObjectUrl = URL.createObjectURL(content)
           this.preview.update((current) => current ? {
             ...current,
             loading: false,
-            pdfUrl: this.sanitizer.bypassSecurityTrustResourceUrl(this.pdfObjectUrl ?? ''),
+            pdfUrl: document.previewType === 'pdf'
+              ? this.sanitizer.bypassSecurityTrustResourceUrl(this.previewObjectUrl ?? '')
+              : null,
+            imageUrl: document.previewType === 'image' ? this.previewObjectUrl ?? '' : '',
           } : null)
           return
         }
 
-        void content.text().then((markdown) => {
+        void content.text().then((value) => {
           if (request !== this.previewRequest || this.preview()?.document.id !== document.id) return
-          this.preview.update((current) => current ? { ...current, loading: false, markdown } : null)
-        }).catch(() => this.setPreviewError(request, document.id, 'The Markdown file could not be read.'))
+          this.preview.update((current) => current ? {
+            ...current,
+            loading: false,
+            markdown: document.previewType === 'markdown' ? value : '',
+            text: document.previewType === 'text' ? value : '',
+          } : null)
+        }).catch(() => this.setPreviewError(request, document.id, 'The file could not be read.'))
       },
       error: (error: unknown) => this.setPreviewError(request, document.id, this.api.message(error)),
     })
@@ -281,7 +295,7 @@ export class FilesPage implements OnInit {
 
   protected closePreview(): void {
     this.previewRequest += 1
-    this.revokePdfObjectUrl()
+    this.revokePreviewObjectUrl()
     this.preview.set(null)
   }
 
@@ -320,10 +334,10 @@ export class FilesPage implements OnInit {
     this.preview.update((current) => current ? { ...current, loading: false, error: message } : null)
   }
 
-  private revokePdfObjectUrl(): void {
-    if (!this.pdfObjectUrl) return
-    URL.revokeObjectURL(this.pdfObjectUrl)
-    this.pdfObjectUrl = null
+  private revokePreviewObjectUrl(): void {
+    if (!this.previewObjectUrl) return
+    URL.revokeObjectURL(this.previewObjectUrl)
+    this.previewObjectUrl = null
   }
 }
 
@@ -331,6 +345,15 @@ function documentPreviewType(document: KnowledgeDocument): PreviewType | null {
   const name = document.name.toLowerCase()
   const mimeType = document.mimeType.toLowerCase().split(';', 1)[0]?.trim()
   if (mimeType === 'application/pdf' || name.endsWith('.pdf')) return 'pdf'
+  if (
+    ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType ?? '') ||
+    /\.(png|jpe?g|webp|gif)$/.test(name)
+  ) return 'image'
   if (mimeType === 'text/markdown' || name.endsWith('.md') || name.endsWith('.markdown')) return 'markdown'
+  if (
+    mimeType?.startsWith('text/') ||
+    ['application/json', 'application/xml'].includes(mimeType ?? '') ||
+    /\.(txt|csv|json|html?|xml)$/.test(name)
+  ) return 'text'
   return null
 }

@@ -2,11 +2,14 @@ import { Router, type Request, type RequestHandler, type Response } from 'expres
 import multer from 'multer'
 import { z } from 'zod'
 import { query } from '../db/pool.js'
+import CalendarRepository from '../repositories/calendar_repository.js'
 import ConversationsRepository from '../repositories/conversations_repository.js'
 import DocumentsRepository from '../repositories/documents_repository.js'
 import LibraryRepository from '../repositories/library_repository.js'
+import TasksRepository from '../repositories/tasks_repository.js'
 import ChatService from '../services/chat_service.js'
 import IngestionService from '../services/ingestion_service.js'
+import { knownSkillCodes, taskSkillGroups, taskTemplates } from '../services/task_catalog.js'
 import { VECTOR_DIMENSIONS } from '../services/vector_service.js'
 import { workspaceId } from '../services/workspace_service.js'
 
@@ -16,6 +19,8 @@ const library = new LibraryRepository(documents)
 const conversations = new ConversationsRepository()
 const ingestion = new IngestionService(documents)
 const chat = new ChatService(conversations, documents)
+const tasks = new TasksRepository()
+const calendar = new CalendarRepository()
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 4 * 1024 * 1024, files: 1 },
@@ -33,6 +38,25 @@ const optionalFolderIdSchema = z.preprocess(
 const createFolderSchema = z.object({
   name: z.string().trim().min(1).max(80),
   parentId: optionalFolderIdSchema.optional().default(null),
+})
+const createTaskSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).optional().default(''),
+  skillCodes: z.array(z.string().trim().min(1).max(80)).min(1).max(30)
+    .refine((codes) => new Set(codes).size === codes.length, 'A skill can only appear once in a task'),
+})
+const calendarWindowSchema = z.object({
+  from: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+  to: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+}).refine(({ from, to }) => to.getTime() > from.getTime(), {
+  message: 'Calendar end must be after its start',
+}).refine(({ from, to }) => to.getTime() - from.getTime() <= 93 * 24 * 60 * 60 * 1_000, {
+  message: 'Calendar windows cannot exceed 93 days',
+})
+const taskScheduleSchema = z.object({
+  scheduledFor: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
+  timezone: z.string().trim().min(1).max(80),
+  recurrence: z.enum(['once', 'daily', 'weekly', 'monthly']),
 })
 
 router.get('/health', async (_req, res) => {
@@ -118,6 +142,111 @@ router.get('/documents', asyncRoute(async (req, res) => {
   res.json({ success: true, data: await documents.list(workspaceId(req)) })
 }))
 
+router.get('/tasks', asyncRoute(async (req, res) => {
+  res.json({ success: true, data: {
+    skillGroups: taskSkillGroups(),
+    templates: taskTemplates(),
+    tasks: await tasks.list(workspaceId(req)),
+  } })
+}))
+
+router.post('/tasks', asyncRoute(async (req, res) => {
+  const parsed = createTaskSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json(validationError('task', parsed.error.issues[0]?.message ?? 'Invalid task'))
+  }
+  const knownCodes = knownSkillCodes()
+  const unknownCode = parsed.data.skillCodes.find((code) => !knownCodes.has(code))
+  if (unknownCode) return res.status(400).json(validationError('skillCodes', `Unknown skill: ${unknownCode}`))
+  try {
+    const task = await tasks.create(
+      workspaceId(req),
+      parsed.data.name,
+      parsed.data.description,
+      parsed.data.skillCodes
+    )
+    return res.status(201).json({ success: true, data: task })
+  } catch (error) {
+    if (error instanceof Error && error.message === 'A task with this name already exists') {
+      return res.status(409).json({ success: false, errors: [{ rule: 'unique', field: 'name', message: error.message }] })
+    }
+    throw error
+  }
+}))
+
+router.put('/tasks/:id', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid task ID is required'))
+  const parsed = createTaskSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json(validationError('task', parsed.error.issues[0]?.message ?? 'Invalid task'))
+  }
+  const knownCodes = knownSkillCodes()
+  const unknownCode = parsed.data.skillCodes.find((code) => !knownCodes.has(code))
+  if (unknownCode) return res.status(400).json(validationError('skillCodes', `Unknown skill: ${unknownCode}`))
+  try {
+    const task = await tasks.update(
+      workspaceId(req),
+      id.data,
+      parsed.data.name,
+      parsed.data.description,
+      parsed.data.skillCodes
+    )
+    if (!task) return res.status(404).json(notFound('task'))
+    return res.json({ success: true, data: task })
+  } catch (error) {
+    if (error instanceof Error && error.message === 'A task with this name already exists') {
+      return res.status(409).json({ success: false, errors: [{ rule: 'unique', field: 'name', message: error.message }] })
+    }
+    throw error
+  }
+}))
+
+router.delete('/tasks/:id', asyncRoute(async (req, res) => {
+  const parsed = idSchema.safeParse(req.params.id)
+  if (!parsed.success) return res.status(400).json(validationError('id', 'A valid task ID is required'))
+  const removed = await tasks.remove(workspaceId(req), parsed.data)
+  if (!removed) return res.status(404).json(notFound('task'))
+  return res.status(204).send()
+}))
+
+router.get('/calendar', asyncRoute(async (req, res) => {
+  const parsed = calendarWindowSchema.safeParse(req.query)
+  if (!parsed.success) {
+    return res.status(400).json(validationError('calendar', parsed.error.issues[0]?.message ?? 'Invalid calendar window'))
+  }
+  return res.json({
+    success: true,
+    data: await calendar.window(workspaceId(req), parsed.data.from, parsed.data.to),
+  })
+}))
+
+router.put('/tasks/:id/schedule', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid task ID is required'))
+  const parsed = taskScheduleSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json(validationError('schedule', parsed.error.issues[0]?.message ?? 'Invalid task schedule'))
+  }
+  const schedule = await calendar.upsert(
+    workspaceId(req),
+    id.data,
+    parsed.data.scheduledFor,
+    parsed.data.timezone,
+    parsed.data.recurrence
+  )
+  if (!schedule) return res.status(404).json(notFound('task'))
+  return res.json({ success: true, data: schedule })
+}))
+
+router.delete('/calendar/schedules/:id', asyncRoute(async (req, res) => {
+  const parsed = idSchema.safeParse(req.params.id)
+  if (!parsed.success) return res.status(400).json(validationError('id', 'A valid schedule ID is required'))
+  const removed = await calendar.remove(workspaceId(req), parsed.data)
+  if (!removed) return res.status(404).json(notFound('schedule'))
+  return res.status(204).send()
+}))
+
 router.get('/documents/:id/content', asyncRoute(async (req, res) => {
   const parsed = idSchema.safeParse(req.params.id)
   if (!parsed.success) return res.status(400).json(validationError('id', 'A valid document ID is required'))
@@ -128,13 +257,13 @@ router.get('/documents/:id/content', asyncRoute(async (req, res) => {
   if (!previewType) {
     return res.status(415).json({
       success: false,
-      errors: [{ rule: 'unsupported_type', field: 'document', message: 'Preview is available for PDF and Markdown files' }],
+      errors: [{ rule: 'unsupported_type', field: 'document', message: 'Preview is available for PDF, image, Markdown, and text files' }],
     })
   }
 
   res.set({
     'Cache-Control': 'private, no-store',
-    'Content-Type': previewType === 'pdf' ? 'application/pdf' : 'text/markdown; charset=utf-8',
+    'Content-Type': previewContentType(previewType, document.name, document.mimeType),
     'Content-Disposition': 'inline',
     'X-Content-Type-Options': 'nosniff',
   })
@@ -219,16 +348,43 @@ function notFound(field: string) {
   return { success: false, errors: [{ rule: 'not_found', field, message: `${field} was not found` }] }
 }
 
-function documentPreviewType(name: string, mimeType: string): 'pdf' | 'markdown' | null {
+type DocumentPreviewType = 'pdf' | 'image' | 'markdown' | 'text'
+
+function documentPreviewType(name: string, mimeType: string): DocumentPreviewType | null {
   const normalizedName = name.toLowerCase()
   const normalizedMimeType = mimeType.toLowerCase().split(';', 1)[0]?.trim()
   if (normalizedMimeType === 'application/pdf' || normalizedName.endsWith('.pdf')) return 'pdf'
+  if (
+    ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(normalizedMimeType ?? '') ||
+    /\.(png|jpe?g|webp|gif)$/.test(normalizedName)
+  ) return 'image'
   if (
     normalizedMimeType === 'text/markdown' ||
     normalizedName.endsWith('.md') ||
     normalizedName.endsWith('.markdown')
   ) return 'markdown'
+  if (
+    normalizedMimeType?.startsWith('text/') ||
+    ['application/json', 'application/xml'].includes(normalizedMimeType ?? '') ||
+    /\.(txt|csv|json|html?|xml)$/.test(normalizedName)
+  ) return 'text'
   return null
+}
+
+function previewContentType(type: DocumentPreviewType, name: string, mimeType: string): string {
+  if (type === 'pdf') return 'application/pdf'
+  if (type === 'markdown') return 'text/markdown; charset=utf-8'
+  if (type === 'text') return 'text/plain; charset=utf-8'
+
+  const normalizedMimeType = mimeType.toLowerCase().split(';', 1)[0]?.trim()
+  if (['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(normalizedMimeType ?? '')) {
+    return normalizedMimeType ?? 'application/octet-stream'
+  }
+  const normalizedName = name.toLowerCase()
+  if (normalizedName.endsWith('.png')) return 'image/png'
+  if (/\.jpe?g$/.test(normalizedName)) return 'image/jpeg'
+  if (normalizedName.endsWith('.webp')) return 'image/webp'
+  return 'image/gif'
 }
 
 export default router

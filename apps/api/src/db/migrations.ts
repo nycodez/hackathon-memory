@@ -126,4 +126,55 @@ export const migrations = [
         ON knowledge_documents (workspace_id, folder_id, updated_at DESC);
     `,
   },
+  {
+    id: '004_task_memory',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_tasks (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        workspace_id text NOT NULL,
+        name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),
+        description text NOT NULL DEFAULT '' CHECK (char_length(description) <= 500),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS memory_tasks_workspace_name_idx
+        ON memory_tasks (workspace_id, lower(name));
+      CREATE INDEX IF NOT EXISTS memory_tasks_workspace_updated_idx
+        ON memory_tasks (workspace_id, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS memory_task_steps (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id uuid NOT NULL REFERENCES memory_tasks(id) ON DELETE CASCADE,
+        skill_code text NOT NULL CHECK (char_length(skill_code) BETWEEN 1 AND 80),
+        position integer NOT NULL CHECK (position >= 0),
+        configuration jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (task_id, position)
+      );
+
+      CREATE INDEX IF NOT EXISTS memory_task_steps_task_idx
+        ON memory_task_steps (task_id, position);
+    `,
+  },
+  {
+    id: '005_task_calendar',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_task_schedules (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        workspace_id text NOT NULL,
+        task_id uuid NOT NULL UNIQUE REFERENCES memory_tasks(id) ON DELETE CASCADE,
+        scheduled_for timestamptz NOT NULL,
+        timezone text NOT NULL CHECK (char_length(timezone) BETWEEN 1 AND 80),
+        recurrence text NOT NULL DEFAULT 'once' CHECK (
+          recurrence IN ('once', 'daily', 'weekly', 'monthly')
+        ),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS memory_task_schedules_workspace_time_idx
+        ON memory_task_schedules (workspace_id, scheduled_for);
+    `,
+  },
 ] as const
