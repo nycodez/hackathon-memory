@@ -13,7 +13,7 @@ A clean Angular + Express starter for document-grounded hackathon products. It d
 - Express API packaged as a Vercel Function under `/api`
 - PostgreSQL migrations with workspace scoping, full-text search, `vector(1024)`, and HNSW indexing
 - Dependency-free feature-hash embeddings, so retrieval works before an external embedding provider is added
-- Optional Claude OCR for scanned PDFs and images
+- Bedrock OCR for scanned PDFs and images
 
 ## Architecture
 
@@ -29,7 +29,7 @@ The starter deliberately keeps the first deployment small:
 
 - Raw files up to 4 MB are stored in PostgreSQL `bytea`, which stays under Vercel's request-body ceiling and avoids adding object storage to the baseline.
 - Text, Markdown, CSV, JSON, HTML, and text-bearing PDFs process without an AI key.
-- Scanned PDFs and images move to `needs_ocr` until `ANTHROPIC_API_KEY` is configured.
+- Scanned PDFs and images move to `needs_ocr` until Bedrock credentials and an OCR-capable model are configured.
 - Summaries are deterministic and embeddings use local feature hashing. Replace these services with challenge-specific models without changing the database or API contracts.
 
 For each query, the configured lightweight Bedrock model creates a structured retrieval plan. The API uses that plan to retrieve ready workspace-scoped chunks, bounds and labels the full source passages, and sends that context with the user's question to the primary Bedrock model. No relevant chunks means no generation call.
@@ -80,14 +80,13 @@ Set these environment variables for Preview and Production:
 | `PGSSLMODE` | Yes | Use `require` for RDS |
 | `PG_POOL_MAX` | No | Per-function pool size; defaults to 5 |
 | `CORS_ORIGIN` | No | Only needed when the API is called from another origin |
-| `ANTHROPIC_API_KEY` | No | Enables OCR for scanned PDFs and images |
-| `ANTHROPIC_OCR_MODEL` | No | OCR-capable model override |
 | `LLM_PROVIDER` | Bedrock use | Set to `bedrock` |
 | `AWS_REGION` | Bedrock use | Bedrock region; configured as `us-east-1` |
 | `AWS_ACCESS_KEY_ID` | Vercel Bedrock use | IAM access key stored as a Vercel secret |
 | `AWS_SECRET_ACCESS_KEY` | Vercel Bedrock use | IAM secret key stored as a Vercel secret |
 | `AWS_SESSION_TOKEN` | Temporary credentials only | Session token for temporary AWS credentials |
 | `BEDROCK_MODEL_ID` | Bedrock use | Primary Claude model or inference-profile ID |
+| `BEDROCK_OCR_MODEL_ID` | No | OCR-capable Bedrock model; defaults to `BEDROCK_MODEL_ID` |
 | `BEDROCK_CONTEXT_MAX_CHARS` | No | Maximum retrieved source text sent per query; defaults to 12,000 |
 | `BEDROCK_LIGHTWEIGHT_MODEL_ID` | Bedrock use | Lightweight Claude model or inference-profile ID |
 | `BEDROCK_EMBEDDING_MODEL_ID` | Bedrock use | Cohere embedding model ID |

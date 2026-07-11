@@ -1,6 +1,6 @@
 import type { KnowledgeDocument } from '@hackathon/shared'
-import { optionalEnv } from '../config/env.js'
 import DocumentsRepository, { type StoredDocument } from '../repositories/documents_repository.js'
+import BedrockOcrService from './bedrock_ocr_service.js'
 import { extractPdfText } from './pdf_text_service.js'
 import { embedText } from './vector_service.js'
 
@@ -14,11 +14,14 @@ const textMimeTypes = new Set([
 ])
 
 export default class IngestionService {
-  constructor(private readonly documents = new DocumentsRepository()) {}
+  constructor(
+    private readonly documents = new DocumentsRepository(),
+    private readonly ocr = new BedrockOcrService()
+  ) {}
 
   async process(workspaceId: string, documentId: string): Promise<KnowledgeDocument | null> {
     const claimed = await this.documents.claimForProcessing(workspaceId, documentId)
-    if (!claimed) return this.documents.get(workspaceId, documentId)
+    if (!claimed) return publicDocument(await this.documents.get(workspaceId, documentId))
 
     const document = await this.documents.get(workspaceId, documentId)
     if (!document) return null
@@ -28,13 +31,13 @@ export default class IngestionService {
       let text = extraction.text
 
       if (extraction.requiresOcr) {
-        text = await ocrDocument(document)
+        text = await this.ocr.transcribe(document)
         if (!text) {
           await this.documents.setStage(workspaceId, documentId, 'needs_ocr', {
             requiresOcr: true,
-            error: 'OCR is required. Configure ANTHROPIC_API_KEY and process the file again.',
+            error: 'OCR is required. Configure Bedrock credentials and a Bedrock OCR model, then process the file again.',
           })
-          return this.documents.get(workspaceId, documentId)
+          return publicDocument(await this.documents.get(workspaceId, documentId))
         }
       }
 
@@ -51,11 +54,11 @@ export default class IngestionService {
       const chunks = chunkText(normalized).map((content) => ({ content, embedding: embedText(content) }))
       await this.documents.replaceChunks(workspaceId, documentId, chunks)
       await this.documents.setStage(workspaceId, documentId, 'ready')
-      return this.documents.get(workspaceId, documentId)
+      return publicDocument(await this.documents.get(workspaceId, documentId))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Document processing failed'
       await this.documents.setStage(workspaceId, documentId, 'failed', { error: message })
-      return this.documents.get(workspaceId, documentId)
+      return publicDocument(await this.documents.get(workspaceId, documentId))
     }
   }
 }
@@ -76,35 +79,6 @@ async function extractText(document: StoredDocument): Promise<{ text: string; re
 
   if (document.mimeType.startsWith('image/')) return { text: '', requiresOcr: true }
   throw new Error(`Unsupported file type: ${document.mimeType}`)
-}
-
-async function ocrDocument(document: StoredDocument): Promise<string | null> {
-  const apiKey = optionalEnv('ANTHROPIC_API_KEY')
-  if (!apiKey) return null
-
-  const isImage = document.mimeType.startsWith('image/')
-  const mediaType = document.mimeType || (isImage ? 'image/png' : 'application/pdf')
-  const source = { type: 'base64', media_type: mediaType, data: document.rawData.toString('base64') }
-  const attachment = isImage ? { type: 'image', source } : { type: 'document', source }
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: optionalEnv('ANTHROPIC_OCR_MODEL') ?? 'claude-sonnet-4-20250514',
-      max_tokens: 8_000,
-      messages: [{
-        role: 'user',
-        content: [attachment, { type: 'text', text: 'Transcribe all readable text. Return only the transcription.' }],
-      }],
-    }),
-  })
-  if (!response.ok) throw new Error(`OCR provider returned ${response.status}`)
-  const payload = await response.json() as { content?: Array<{ type?: string; text?: string }> }
-  return payload.content?.filter((item) => item.type === 'text').map((item) => item.text ?? '').join('\n').trim() || null
 }
 
 function normalizeText(value: string): string {
@@ -135,4 +109,10 @@ function chunkText(value: string, size = 1_400, overlap = 180): string[] {
 
 function hasTextExtension(name: string): boolean {
   return /\.(txt|md|markdown|csv|json|html?|xml)$/i.test(name)
+}
+
+function publicDocument(document: StoredDocument | null): KnowledgeDocument | null {
+  if (!document) return null
+  const { rawData: _rawData, ...result } = document
+  return result
 }
