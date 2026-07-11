@@ -143,6 +143,14 @@ router.post('/library/folders', asyncRoute(async (req, res) => {
   }
 }))
 
+router.delete('/library/folders/:id', asyncRoute(async (req, res) => {
+  const parsed = idSchema.safeParse(req.params.id)
+  if (!parsed.success) return res.status(400).json(validationError('id', 'A valid folder ID is required'))
+  const removed = await library.remove(workspaceId(req), parsed.data)
+  if (!removed) return res.status(404).json(notFound('folder'))
+  return res.status(204).send()
+}))
+
 router.post('/documents', upload.single('file'), asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json(validationError('file', 'Choose one file to upload'))
   const parsed = optionalFolderIdSchema.safeParse(req.body.folderId)

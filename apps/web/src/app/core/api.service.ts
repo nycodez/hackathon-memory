@@ -60,6 +60,10 @@ export class ApiService {
     ))
   }
 
+  deleteFolder(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/library/folders/${id}`, { headers: this.headers })
+  }
+
   upload(file: File, folderId: string | null = null): Observable<KnowledgeDocument> {
     const form = new FormData()
     form.append('file', file)

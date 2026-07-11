@@ -54,11 +54,14 @@ const emptyListing: LibraryListing = {
         @if (listing().folders.length) {
           <div class="folder-grid" aria-label="Folders">
             @for (folder of listing().folders; track folder.id) {
-              <button class="folder-card" type="button" (click)="openFolder(folder.id)">
-                <span class="folder-icon">▰</span>
-                <span><strong>{{ folder.name }}</strong><small>Folder</small></span>
-                <i aria-hidden="true">›</i>
-              </button>
+              <article class="folder-item">
+                <button class="folder-card" type="button" (click)="openFolder(folder.id)">
+                  <span class="folder-icon">▰</span>
+                  <span><strong>{{ folder.name }}</strong><small>Folder</small></span>
+                  <i aria-hidden="true">›</i>
+                </button>
+                <button class="folder-delete" type="button" [disabled]="deletingId() === folder.id" (click)="deleteFolder(folder.id)" aria-label="Delete folder">×</button>
+              </article>
             }
           </div>
         }
@@ -174,6 +177,19 @@ export class FilesPage implements OnInit {
         ...listing,
         documents: listing.documents.filter((document) => document.id !== id),
       })),
+      error: (error: unknown) => this.error.set(this.api.message(error)),
+    })
+  }
+
+  protected deleteFolder(id: string): void {
+    if (this.deletingId()) return
+    this.deletingId.set(id)
+    this.error.set('')
+    this.api.deleteFolder(id).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.deletingId.set(null))
+    ).subscribe({
+      next: () => this.load(),
       error: (error: unknown) => this.error.set(this.api.message(error)),
     })
   }

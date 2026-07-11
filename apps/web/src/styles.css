@@ -155,10 +155,12 @@ a { color: inherit; }
 .conversation-list { display: grid; gap: 12px; }
 .conversation-card { position: relative; border: 1px solid var(--border); border-radius: 14px; background: #fff; transition: 160ms ease; }
 .conversation-card:hover { border-color: #ccb8c2; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(48,31,40,.05); }
-.conversation-main { min-height: 82px; padding: 20px 54px 20px 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 16px; align-items: center; text-decoration: none; }
-.conversation-delete, .file-delete { position: absolute; top: 8px; right: 9px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 8px; color: #9a9196; background: transparent; display: grid; place-items: center; cursor: pointer; font-size: 18px; line-height: 1; }
-.conversation-delete:hover:not(:disabled), .file-delete:hover:not(:disabled) { color: #9b352e; background: #fff0ef; }
-.conversation-delete:disabled, .file-delete:disabled { opacity: .4; cursor: wait; }
+.conversation-main { min-height: 82px; padding: 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 16px; align-items: center; text-decoration: none; }
+.conversation-delete, .file-delete, .folder-delete { position: absolute; z-index: 2; top: -10px; left: -10px; width: 28px; height: 28px; padding: 0; border: 1px solid #b7c2c6; border-radius: 50%; opacity: 0; color: #69767b; background: #dfe7e9; display: grid; place-items: center; box-shadow: 0 2px 7px rgba(45, 55, 59, .2); pointer-events: none; cursor: pointer; font-size: 20px; font-weight: 300; line-height: 1; transform: scale(.9); transition: opacity 120ms ease, color 120ms ease, background 120ms ease, border-color 120ms ease, transform 120ms ease; }
+.conversation-card:hover .conversation-delete, .conversation-card:focus-within .conversation-delete, .file-row:hover .file-delete, .file-row:focus-within .file-delete, .folder-item:hover .folder-delete, .folder-item:focus-within .folder-delete, .conversation-delete:focus-visible, .file-delete:focus-visible, .folder-delete:focus-visible { opacity: 1; pointer-events: auto; transform: scale(1); }
+.conversation-delete:hover:not(:disabled), .file-delete:hover:not(:disabled), .folder-delete:hover:not(:disabled) { border-color: #99a8ad; color: #3f4b50; background: #d3dde0; transform: scale(1.06); }
+.conversation-delete:focus-visible, .file-delete:focus-visible, .folder-delete:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.conversation-delete:disabled, .file-delete:disabled, .folder-delete:disabled { opacity: .4; cursor: wait; }
 .conversation-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: var(--accent); background: var(--accent-soft); font-size: 20px; }
 .conversation-copy { min-width: 0; }
 .conversation-copy h2 { margin: 0 0 5px; font-size: 14px; font-weight: 600; }
@@ -176,7 +178,8 @@ a { color: inherit; }
 .new-folder-form input { min-width: 0; flex: 1; padding: 0 12px; border: 1px solid #d6d3d7; border-radius: 8px; outline: none; font-size: 12px; }
 .new-folder-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(145,70,106,.08); }
 .folder-grid { margin-bottom: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.folder-card { min-width: 0; min-height: 68px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; color: #342f32; background: #fff; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 11px; align-items: center; text-align: left; cursor: pointer; transition: 140ms ease; }
+.folder-item { position: relative; min-width: 0; }
+.folder-card { width: 100%; min-width: 0; min-height: 68px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; color: #342f32; background: #fff; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 11px; align-items: center; text-align: left; cursor: pointer; transition: 140ms ease; }
 .folder-card:hover { border-color: #cdbac4; transform: translateY(-1px); box-shadow: 0 7px 20px rgba(48,31,40,.05); }
 .folder-card > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
 .folder-card strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -188,8 +191,8 @@ a { color: inherit; }
 .upload-note > div { display: grid; gap: 3px; }
 .upload-note strong { font-size: 11px; }
 .upload-note small { color: var(--muted); font-size: 10px; }
-.file-table { overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: #fff; }
-.file-row { position: relative; min-height: 78px; padding: 13px 52px 13px 20px; border-top: 1px solid #eee9ec; display: grid; grid-template-columns: minmax(260px, 1.6fr) minmax(170px, .8fr) 100px 140px; gap: 16px; align-items: center; font-size: 11px; }
+.file-table { overflow: visible; border: 1px solid var(--border); border-radius: 15px; background: #fff; }
+.file-row { position: relative; min-height: 78px; padding: 13px 20px; border-top: 1px solid #eee9ec; display: grid; grid-template-columns: minmax(260px, 1.6fr) minmax(170px, .8fr) 100px 140px; gap: 16px; align-items: center; font-size: 11px; }
 .file-head { min-height: 44px; border-top: 0; color: #8f878c; background: #fbfafb; font-size: 10px; font-weight: 600; }
 .file-head { padding-right: 20px; }
 .file-name { min-width: 0; display: flex; align-items: center; gap: 12px; }
@@ -253,10 +256,10 @@ a { color: inherit; }
   .new-folder-form .button { width: auto; flex: 1; }
   .composer small { display: none; }
   .composer { padding-bottom: 10px; }
-  .conversation-main { padding: 16px 42px 16px 16px; grid-template-columns: 40px minmax(0, 1fr); }
+  .conversation-main { padding: 16px; grid-template-columns: 40px minmax(0, 1fr); }
   .conversation-card .resume { display: none; }
   .file-table { border: 0; background: transparent; display: grid; gap: 10px; overflow: visible; }
-  .file-row { min-height: auto; padding: 16px 48px 16px 16px; border: 1px solid var(--border); border-radius: 13px; background: #fff; grid-template-columns: 1fr auto; gap: 13px; }
+  .file-row { min-height: auto; padding: 16px; border: 1px solid var(--border); border-radius: 13px; background: #fff; grid-template-columns: 1fr auto; gap: 13px; }
   .file-head { display: none; }
   .file-row > :nth-child(3), .file-row > :nth-child(4) { display: none; }
   .upload-note { align-items: flex-start; }

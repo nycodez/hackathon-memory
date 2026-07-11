@@ -1,6 +1,6 @@
 import type { LibraryFolder, LibraryListing } from '@hackathon/shared'
 import type { QueryResultRow } from 'pg'
-import { query } from '../db/pool.js'
+import { query, transaction } from '../db/pool.js'
 import DocumentsRepository from './documents_repository.js'
 
 interface FolderRow extends QueryResultRow {
@@ -53,6 +53,42 @@ export default class LibraryRepository {
       if (isUniqueViolation(error)) throw new Error('A folder with this name already exists here')
       throw error
     }
+  }
+
+  async remove(workspaceId: string, id: string): Promise<boolean> {
+    return transaction(async (client) => {
+      const folderResult = await client.query<Pick<FolderRow, 'id'>>(
+        `SELECT id
+         FROM library_folders
+         WHERE workspace_id = $1 AND id = $2
+         FOR UPDATE`,
+        [workspaceId, id]
+      )
+      const folder = folderResult.rows[0]
+      if (!folder) return false
+
+      await client.query(
+        `WITH RECURSIVE subtree AS (
+           SELECT id
+           FROM library_folders
+           WHERE workspace_id = $1 AND id = $2
+           UNION ALL
+           SELECT child.id
+           FROM library_folders child
+           JOIN subtree parent ON child.parent_id = parent.id
+           WHERE child.workspace_id = $1
+         )
+         DELETE FROM knowledge_documents
+         WHERE workspace_id = $1 AND folder_id IN (SELECT id FROM subtree)`,
+        [workspaceId, id]
+      )
+
+      const removed = await client.query(
+        'DELETE FROM library_folders WHERE workspace_id = $1 AND id = $2',
+        [workspaceId, id]
+      )
+      return removed.rowCount === 1
+    })
   }
 
   private async get(workspaceId: string, id: string): Promise<LibraryFolder | null> {
