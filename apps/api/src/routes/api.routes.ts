@@ -1,14 +1,19 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express'
+import { timingSafeEqual } from 'node:crypto'
 import multer from 'multer'
 import { z } from 'zod'
 import { query } from '../db/pool.js'
 import CalendarRepository from '../repositories/calendar_repository.js'
+import CapabilitiesRepository from '../repositories/capabilities_repository.js'
 import ConversationsRepository from '../repositories/conversations_repository.js'
 import DocumentsRepository from '../repositories/documents_repository.js'
 import LibraryRepository from '../repositories/library_repository.js'
 import TasksRepository from '../repositories/tasks_repository.js'
 import ChatService from '../services/chat_service.js'
+import CapabilityRunnerService, { CapabilityRunDeniedError } from '../services/capability_runner_service.js'
 import IngestionService from '../services/ingestion_service.js'
+import MemorySeedService from '../services/memory_seed_service.js'
+import { applyPendingMigrations } from '../services/migration_service.js'
 import { knownSkillCodes, taskSkillGroups, taskTemplates } from '../services/task_catalog.js'
 import { VECTOR_DIMENSIONS } from '../services/vector_service.js'
 import { workspaceId } from '../services/workspace_service.js'
@@ -21,6 +26,8 @@ const ingestion = new IngestionService(documents)
 const chat = new ChatService(conversations, documents)
 const tasks = new TasksRepository()
 const calendar = new CalendarRepository()
+const capabilities = new CapabilitiesRepository()
+const capabilityRunner = new CapabilityRunnerService()
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 4 * 1024 * 1024, files: 1 },
@@ -57,6 +64,23 @@ const taskScheduleSchema = z.object({
   scheduledFor: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
   timezone: z.string().trim().min(1).max(80),
   recurrence: z.enum(['once', 'daily', 'weekly', 'monthly']),
+})
+
+router.post('/admin/memory-bootstrap', asyncRoute(async (req, res) => {
+  if (!validBootstrapToken(req.get('x-bootstrap-token'))) return res.status(404).json(notFound('route'))
+  const appliedMigrations = await applyPendingMigrations()
+  await new MemorySeedService().seed(workspaceId(req))
+  return res.json({ success: true, data: { appliedMigrations, seeded: true } })
+}))
+const capabilityRunSchema = z.object({
+  idempotencyKey: z.string().trim().min(1).max(120),
+  asOfDate: z.string().date().optional(),
+})
+const memorySearchSchema = z.object({
+  q: z.string().trim().max(120).optional().default(''),
+})
+const recommendationSchema = z.object({
+  context: z.string().trim().max(500).optional().default(''),
 })
 
 router.get('/health', async (_req, res) => {
@@ -148,6 +172,91 @@ router.get('/tasks', asyncRoute(async (req, res) => {
     templates: taskTemplates(),
     tasks: await tasks.list(workspaceId(req)),
   } })
+}))
+
+router.get('/demo/actors', asyncRoute(async (req, res) => {
+  return res.json({ success: true, data: await capabilities.actors(workspaceId(req)) })
+}))
+
+router.get('/capabilities', asyncRoute(async (req, res) => {
+  return res.json({
+    success: true,
+    data: await capabilities.list(workspaceId(req), optionalActorId(req)),
+  })
+}))
+
+router.get('/capabilities/:id', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid capability ID is required'))
+  const capability = await capabilities.get(workspaceId(req), id.data, optionalActorId(req))
+  if (!capability) return res.status(404).json(notFound('capability'))
+  return res.json({ success: true, data: capability })
+}))
+
+router.post('/capabilities/:id/install', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid capability ID is required'))
+  const installation = await capabilities.install(workspaceId(req), id.data)
+  if (!installation) return res.status(404).json(notFound('capability'))
+  return res.status(201).json({ success: true, data: installation })
+}))
+
+router.post('/capabilities/:id/runs', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid capability ID is required'))
+  const actorId = requiredActorId(req)
+  if (!actorId) return res.status(400).json(validationError('x-actor-id', 'A valid x-actor-id header is required'))
+  const parsed = capabilityRunSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json(validationError('run', parsed.error.issues[0]?.message ?? 'Invalid capability run'))
+  }
+  try {
+    const run = await capabilityRunner.run(workspaceId(req), id.data, actorId, parsed.data)
+    return res.status(201).json({ success: true, data: run })
+  } catch (error) {
+    if (error instanceof CapabilityRunDeniedError) {
+      return res.status(403).json({
+        success: false,
+        errors: [{ rule: 'permission', field: 'actor', message: error.message }],
+      })
+    }
+    if (error instanceof Error && error.message === 'Capability not found') {
+      return res.status(404).json(notFound('capability'))
+    }
+    throw error
+  }
+}))
+
+router.get('/capabilities/:id/runs', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid capability ID is required'))
+  const capability = await capabilities.get(workspaceId(req), id.data, optionalActorId(req))
+  if (!capability) return res.status(404).json(notFound('capability'))
+  return res.json({ success: true, data: await capabilities.runs(workspaceId(req), id.data) })
+}))
+
+router.get('/runs/:id', asyncRoute(async (req, res) => {
+  const id = idSchema.safeParse(req.params.id)
+  if (!id.success) return res.status(400).json(validationError('id', 'A valid run ID is required'))
+  const run = await capabilities.run(workspaceId(req), id.data)
+  if (!run) return res.status(404).json(notFound('run'))
+  return res.json({ success: true, data: run })
+}))
+
+router.get('/memory/search', asyncRoute(async (req, res) => {
+  const parsed = memorySearchSchema.safeParse(req.query)
+  if (!parsed.success) return res.status(400).json(validationError('q', 'Search cannot exceed 120 characters'))
+  return res.json({ success: true, data: await capabilities.search(workspaceId(req), parsed.data.q) })
+}))
+
+router.get('/memory/recommendations', asyncRoute(async (req, res) => {
+  const parsed = recommendationSchema.safeParse(req.query)
+  if (!parsed.success) return res.status(400).json(validationError('context', 'Context cannot exceed 500 characters'))
+  return res.json({ success: true, data: await capabilities.recommendations(workspaceId(req), parsed.data.context) })
+}))
+
+router.get('/memory/analytics', asyncRoute(async (req, res) => {
+  return res.json({ success: true, data: await capabilities.analytics(workspaceId(req)) })
 }))
 
 router.post('/tasks', asyncRoute(async (req, res) => {
@@ -346,6 +455,23 @@ function validationError(field: string, message: string) {
 
 function notFound(field: string) {
   return { success: false, errors: [{ rule: 'not_found', field, message: `${field} was not found` }] }
+}
+
+function validBootstrapToken(provided: string | undefined): boolean {
+  const expected = process.env.MEMORY_BOOTSTRAP_TOKEN?.trim()
+  if (!expected || !provided) return false
+  const expectedBuffer = Buffer.from(expected)
+  const providedBuffer = Buffer.from(provided)
+  return expectedBuffer.length === providedBuffer.length && timingSafeEqual(expectedBuffer, providedBuffer)
+}
+
+function optionalActorId(req: Request): string | null {
+  const parsed = idSchema.safeParse(req.header('x-actor-id'))
+  return parsed.success ? parsed.data : null
+}
+
+function requiredActorId(req: Request): string | null {
+  return optionalActorId(req)
 }
 
 type DocumentPreviewType = 'pdf' | 'image' | 'markdown' | 'text'

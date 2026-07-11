@@ -1,16 +1,20 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { RouterLink } from '@angular/router'
-import type { CalendarWindow, TaskOccurrence, TaskWorkspace } from '@hackathon/shared'
-import { finalize, forkJoin } from 'rxjs'
+import type {
+  CalendarWindow,
+  CapabilitySummary,
+  MemoryAnalytics,
+  MemoryRecommendation,
+  MemorySearchResult,
+  TaskOccurrence,
+  TaskWorkspace,
+} from '@hackathon/shared'
+import { Subject, catchError, debounceTime, distinctUntilChanged, finalize, forkJoin, of, switchMap } from 'rxjs'
 import { ApiService } from '../core/api.service'
 
-interface MemorySearchResult {
-  id: string
-  type: 'Saved task' | 'Capability' | 'Atomic skill'
-  name: string
-  description: string
-  detail: string
+interface MemorySearchView extends MemorySearchResult {
+  typeLabel: string
   route: string
   fragment?: string
   queryParams?: Record<string, string>
@@ -46,17 +50,19 @@ const emptyCalendar: CalendarWindow = {
 
         <div class="memory-search" [class.has-results]="hasSearchQuery()">
           <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
-          <input #searchInput type="search" autocomplete="off" placeholder="Search weekly AP run, vendor bill, meeting follow-up…" [value]="searchQuery()" (input)="searchQuery.set(searchInput.value)" aria-label="Search organizational memory">
+          <input #searchInput type="search" autocomplete="off" placeholder="Search weekly AP run, vendor bill, meeting follow-up…" [value]="searchQuery()" (input)="updateSearch(searchInput.value)" aria-label="Search organizational memory">
           @if (searchQuery()) {
             <button type="button" (click)="clearSearch()" aria-label="Clear search">×</button>
           }
 
           @if (hasSearchQuery()) {
             <div class="memory-search-results" role="listbox" aria-label="Organizational memory search results">
-              @if (searchResults().length) {
+              @if (searching()) {
+                <div class="memory-search-empty"><strong>Searching organizational memory…</strong></div>
+              } @else if (searchResults().length) {
                 @for (result of searchResults(); track result.type + result.id) {
                   <a [routerLink]="result.route" [fragment]="result.fragment" [queryParams]="result.queryParams" role="option">
-                    <span class="search-result-kind" [attr.data-kind]="result.type">{{ result.type }}</span>
+                    <span class="search-result-kind" [attr.data-kind]="result.typeLabel">{{ result.typeLabel }}</span>
                     <div><strong>{{ result.name }}</strong><small>{{ result.description }}</small></div>
                     <span class="search-result-detail">{{ result.detail }}</span>
                     <i aria-hidden="true">→</i>
@@ -72,7 +78,7 @@ const emptyCalendar: CalendarWindow = {
         <div class="memory-search-prompts" aria-label="Suggested searches">
           <span>Try</span>
           @for (suggestion of searchSuggestions; track suggestion) {
-            <button type="button" (click)="searchQuery.set(suggestion)">{{ suggestion }}</button>
+            <button type="button" (click)="updateSearch(suggestion)">{{ suggestion }}</button>
           }
         </div>
       </header>
@@ -87,19 +93,58 @@ const emptyCalendar: CalendarWindow = {
             <span class="memory-metric-icon">✓</span>
             <div><small>Memorized tasks</small><strong>{{ workspace().tasks.length }}</strong><p>Saved, ordered workflows</p></div>
           </a>
-          <a class="memory-metric" routerLink="/tasks" fragment="templates-title">
+          <a class="memory-metric" href="#capabilities-title">
             <span class="memory-metric-icon">◇</span>
-            <div><small>Capabilities</small><strong>{{ workspace().templates.length }}</strong><p>Reusable task blueprints</p></div>
+            <div><small>Capabilities</small><strong>{{ capabilities().length }}</strong><p>Governed reusable knowledge</p></div>
           </a>
           <a class="memory-metric" routerLink="/skills">
             <span class="memory-metric-icon">+</span>
-            <div><small>Atomic skills</small><strong>{{ skillCount() }}</strong><p>{{ accountingSkillCount() }} accounting skills</p></div>
+            <div><small>Runnable skills</small><strong>{{ analytics()?.runnableSkillCount ?? 0 }}</strong><p>{{ skillCount() }} defined in the catalog</p></div>
           </a>
-          <a class="memory-metric" routerLink="/calendar">
-            <span class="memory-metric-icon">□</span>
-            <div><small>Scheduled tasks</small><strong>{{ calendar().schedules.length }}</strong><p>Active planned schedules</p></div>
+          <a class="memory-metric" href="#memory-analytics">
+            <span class="memory-metric-icon">↗</span>
+            <div><small>Successful runs</small><strong>{{ analytics()?.succeededRunCount ?? 0 }}</strong><p>{{ analytics()?.runCount ?? 0 }} governed runs recorded</p></div>
           </a>
         </section>
+
+        <div class="official-memory-grid">
+          <section class="memory-widget recommendation-widget" aria-labelledby="recommendations-title">
+            <header class="memory-widget-heading">
+              <div><span class="eyebrow">Relevant prior work</span><h2 id="recommendations-title">Recommended memory</h2></div>
+              <span class="memory-widget-note">Context-aware</span>
+            </header>
+            <div class="recommendation-list">
+              @for (recommendation of recommendations(); track recommendation.id) {
+                <a [routerLink]="['/capabilities', recommendation.capabilityId]">
+                  <span>{{ recommendation.type }}</span>
+                  <div><strong>{{ recommendation.title }}</strong><p>{{ recommendation.rationale }}</p><small>{{ recommendation.capabilityName }} · {{ recommendation.confidence * 100 }}% confidence</small></div>
+                  <i aria-hidden="true">→</i>
+                </a>
+              }
+            </div>
+          </section>
+
+          <section id="memory-analytics" class="memory-widget memory-analytics-widget" aria-labelledby="analytics-title">
+            <header class="memory-widget-heading">
+              <div><span class="eyebrow">Capability intelligence</span><h2 id="analytics-title">Memory health</h2></div>
+              <span class="memory-widget-note">Growth · duplication · gaps</span>
+            </header>
+            @if (analytics(); as insight) {
+              <div class="memory-health-grid">
+                <div><span>Versions</span><strong>{{ insight.versionCount }}</strong></div>
+                <div><span>Unique skills</span><strong>{{ insight.uniqueSkillCount }}</strong></div>
+                <div><span>Duplicated</span><strong>{{ insight.duplicatedSkills.length }}</strong></div>
+                <div><span>Missing</span><strong>{{ insight.missingCapabilities.length }}</strong></div>
+                <div><span>{{ latestGrowth()?.month || 'Growth' }}</span><strong>+{{ latestGrowth()?.capabilities ?? 0 }}</strong></div>
+              </div>
+              @if (insight.missingCapabilities.length) {
+                <div class="memory-gap-list">
+                  @for (gap of insight.missingCapabilities; track gap.code) { <div><span>Gap</span><strong>{{ gap.name }}</strong><small>{{ gap.reason }}</small></div> }
+                </div>
+              }
+            }
+          </section>
+        </div>
 
         <div class="memory-widget-grid">
           <section class="memory-widget upcoming-widget" aria-labelledby="upcoming-title">
@@ -154,15 +199,16 @@ const emptyCalendar: CalendarWindow = {
         <section class="memory-widget capability-widget" aria-labelledby="capabilities-title">
           <header class="memory-widget-heading">
             <div><span class="eyebrow">Ready to adapt</span><h2 id="capabilities-title">Reusable capabilities</h2></div>
-            <a routerLink="/tasks" fragment="templates-title">Browse all →</a>
+            <span class="memory-widget-note">Versioned + governed</span>
           </header>
           <div class="home-capability-grid">
-            @for (capability of workspace().templates; track capability.code) {
-              <a routerLink="/tasks" fragment="templates-title">
+            @for (capability of capabilities(); track capability.id) {
+              <a [routerLink]="['/capabilities', capability.id]">
                 <span>0{{ $index + 1 }}</span>
                 <h3>{{ capability.name }}</h3>
                 <p>{{ capability.description }}</p>
-                <small>{{ capability.skills.length }} skills <i aria-hidden="true">→</i></small>
+                <div class="capability-owner-line"><span>{{ capability.owner.name }}</span><i>→</i><strong>{{ capability.steward.name }}</strong></div>
+                <small>{{ capability.skillCount }} skills · {{ capability.runCount }} runs <i aria-hidden="true">→</i></small>
               </a>
             }
           </div>
@@ -175,61 +221,27 @@ const emptyCalendar: CalendarWindow = {
 export class HomePage implements OnInit {
   private readonly api = inject(ApiService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly searchTerms = new Subject<string>()
   protected readonly searchSuggestions = ['Weekly AP run', 'Pay a vendor bill', 'Meeting follow-up']
   protected readonly loading = signal(true)
   protected readonly error = signal('')
   protected readonly workspace = signal<TaskWorkspace>(emptyWorkspace)
   protected readonly calendar = signal<CalendarWindow>(emptyCalendar)
+  protected readonly capabilities = signal<CapabilitySummary[]>([])
+  protected readonly recommendations = signal<MemoryRecommendation[]>([])
+  protected readonly analytics = signal<MemoryAnalytics | null>(null)
   protected readonly searchQuery = signal('')
+  protected readonly searching = signal(false)
+  protected readonly searchResults = signal<MemorySearchView[]>([])
+  protected readonly latestGrowth = computed(() => {
+    const growth = this.analytics()?.growth ?? []
+    return growth[growth.length - 1] ?? null
+  })
 
   protected readonly skillCount = computed(() => this.workspace().skillGroups
     .reduce((count, group) => count + group.skills.length, 0))
-  protected readonly accountingSkillCount = computed(() => this.workspace().skillGroups
-    .filter((group) => group.kind === 'accounting')
-    .reduce((count, group) => count + group.skills.length, 0))
   protected readonly recentTasks = computed(() => this.workspace().tasks.slice(0, 3))
   protected readonly hasSearchQuery = computed(() => Boolean(this.searchQuery().trim()))
-
-  private readonly searchableMemory = computed<MemorySearchResult[]>(() => [
-    ...this.workspace().tasks.map((task) => ({
-      id: task.id,
-      type: 'Saved task' as const,
-      name: task.name,
-      description: task.description || 'A memorized sequence of reusable skills.',
-      detail: `${task.skills.length} skills`,
-      route: '/tasks',
-    })),
-    ...this.workspace().templates.map((capability) => ({
-      id: capability.code,
-      type: 'Capability' as const,
-      name: capability.name,
-      description: capability.description,
-      detail: `${capability.skills.length} skills`,
-      route: '/tasks',
-      fragment: 'templates-title',
-    })),
-    ...this.workspace().skillGroups.flatMap((group) => group.skills.map((skill) => ({
-      id: skill.code,
-      type: 'Atomic skill' as const,
-      name: skill.name,
-      description: skill.description,
-      detail: group.name,
-      route: '/skills',
-      queryParams: { skill: skill.code },
-    }))),
-  ])
-
-  protected readonly searchResults = computed(() => {
-    const terms = this.searchQuery().trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-    if (!terms.length) return []
-    return this.searchableMemory()
-      .filter((item) => {
-        const searchable = `${item.name} ${item.description} ${item.detail}`.toLocaleLowerCase()
-        return terms.every((term) => searchable.includes(term))
-      })
-      .sort((left, right) => searchRank(left, terms) - searchRank(right, terms) || left.name.localeCompare(right.name))
-      .slice(0, 10)
-  })
 
   protected readonly upcomingRuns = computed<UpcomingRun[]>(() => this.calendar().occurrences.slice(0, 4).map((run) => ({
     ...run,
@@ -244,34 +256,78 @@ export class HomePage implements OnInit {
   })))
 
   ngOnInit(): void {
+    this.searchTerms.pipe(
+      debounceTime(140),
+      distinctUntilChanged(),
+      switchMap((query) => {
+        if (!query.trim()) return of({ query: '', results: [] })
+        this.searching.set(true)
+        return this.api.memorySearch(query).pipe(
+          catchError(() => of({ query, results: [] })),
+          finalize(() => this.searching.set(false))
+        )
+      }),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe((response) => this.searchResults.set(response.results.map(toSearchView)))
+
     const from = new Date()
     const to = new Date(from)
     to.setDate(to.getDate() + 90)
     forkJoin({
       workspace: this.api.taskWorkspace(),
       calendar: this.api.calendarWindow(from.toISOString(), to.toISOString()),
+      capabilities: this.api.capabilities(),
+      recommendations: this.api.memoryRecommendations('weekly AP'),
+      analytics: this.api.memoryAnalytics(),
     }).pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => this.loading.set(false))
     ).subscribe({
-      next: ({ workspace, calendar }) => {
+      next: ({ workspace, calendar, capabilities, recommendations, analytics }) => {
         this.workspace.set(workspace)
         this.calendar.set(calendar)
+        this.capabilities.set(capabilities)
+        this.recommendations.set(recommendations)
+        this.analytics.set(analytics)
       },
       error: (error: unknown) => this.error.set(this.api.message(error)),
     })
   }
 
   protected clearSearch(): void {
-    this.searchQuery.set('')
+    this.updateSearch('')
+  }
+
+  protected updateSearch(query: string): void {
+    this.searchQuery.set(query)
+    if (!query.trim()) this.searchResults.set([])
+    this.searchTerms.next(query)
   }
 }
 
-function searchRank(item: MemorySearchResult, terms: string[]): number {
-  const name = item.name.toLocaleLowerCase()
-  const query = terms.join(' ')
-  if (name === query) return 0
-  if (name.startsWith(query)) return 1
-  if (terms.every((term) => name.includes(term))) return 2
-  return item.type === 'Saved task' ? 3 : item.type === 'Capability' ? 4 : 5
+function toSearchView(result: MemorySearchResult): MemorySearchView {
+  const [pathWithQuery, fragment] = result.href.split('#', 2)
+  const [route, queryString] = (pathWithQuery ?? result.href).split('?', 2)
+  const queryParams = queryString ? Object.fromEntries(new URLSearchParams(queryString)) : undefined
+  return {
+    ...result,
+    typeLabel: searchTypeLabel(result.type),
+    route: route || '/',
+    fragment,
+    queryParams,
+  }
+}
+
+function searchTypeLabel(type: MemorySearchResult['type']): string {
+  const labels: Record<MemorySearchResult['type'], string> = {
+    capability: 'Capability',
+    task: 'Saved task',
+    skill: 'Atomic skill',
+    prompt: 'Prompt',
+    workflow: 'Workflow',
+    agent: 'Agent pattern',
+    decision: 'Decision',
+    best_practice: 'Best practice',
+  }
+  return labels[type]
 }

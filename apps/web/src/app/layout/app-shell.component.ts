@@ -1,5 +1,9 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { RouterLink, RouterLinkActive, RouterOutlet, type IsActiveMatchOptions } from '@angular/router'
+import type { MemoryActor } from '@hackathon/shared'
+import { ActorContextService } from '../core/actor-context.service'
+import { ApiService } from '../core/api.service'
 
 @Component({
   selector: 'app-shell',
@@ -32,9 +36,17 @@ import { RouterLink, RouterLinkActive, RouterOutlet, type IsActiveMatchOptions }
           </a>
         </nav>
 
-        <div class="sidebar-foot">
+        <div class="sidebar-foot actor-switcher">
           <span class="status-dot"></span>
-          <span><strong>Demo workspace</strong><small>Neon + pgvector</small></span>
+          <label>
+            <span>Demo actor</span>
+            <select #actorSelect [value]="actorContext.selectedActorId()" (change)="selectActor(actorSelect.value)" aria-label="Demo actor">
+              @for (actor of actors(); track actor.id) {
+                <option [value]="actor.id" [selected]="actor.id === actorContext.selectedActorId()">{{ actor.name }}</option>
+              }
+            </select>
+            <small>{{ selectedActor()?.status === 'departed' ? 'Departed · read only' : (selectedActor()?.title || 'Loading actors…') }}</small>
+          </label>
         </div>
       </aside>
 
@@ -45,11 +57,35 @@ import { RouterLink, RouterLinkActive, RouterOutlet, type IsActiveMatchOptions }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppShellComponent {
+export class AppShellComponent implements OnInit {
+  private readonly api = inject(ApiService)
+  private readonly destroyRef = inject(DestroyRef)
+  protected readonly actorContext = inject(ActorContextService)
+  protected readonly actors = signal<MemoryActor[]>([])
+  protected readonly selectedActor = computed(() => this.actors().find((actor) => actor.id === this.actorContext.selectedActorId()) ?? null)
   protected readonly exactRouteMatch: IsActiveMatchOptions = {
     paths: 'exact',
     queryParams: 'ignored',
     matrixParams: 'ignored',
     fragment: 'ignored',
+  }
+
+  ngOnInit(): void {
+    this.api.demoActors().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (actors) => {
+        this.actors.set(actors)
+        const storedActorExists = actors.some((actor) => actor.id === this.actorContext.selectedActorId())
+        if (!storedActorExists) this.actorContext.select(
+          actors.find((actor) => actor.status === 'active' && actor.title.toLocaleLowerCase().includes('successor'))?.id
+          ?? actors.find((actor) => actor.status === 'active')?.id
+          ?? actors[0]?.id
+          ?? ''
+        )
+      },
+    })
+  }
+
+  protected selectActor(actorId: string): void {
+    this.actorContext.select(actorId)
   }
 }

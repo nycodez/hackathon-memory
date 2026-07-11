@@ -4,6 +4,11 @@ import type {
   ApiEnvelope,
   AskResult,
   CalendarWindow,
+  CapabilityDetail,
+  CapabilityInstallation,
+  CapabilityRun,
+  CapabilityRunRequest,
+  CapabilitySummary,
   Conversation,
   ConversationSummary,
   DashboardSummary,
@@ -11,18 +16,31 @@ import type {
   KnowledgeDocument,
   LibraryFolder,
   LibraryListing,
+  MemoryActor,
+  MemoryAnalytics,
+  MemoryRecommendation,
+  MemorySearchResponse,
   MemorizedTask,
   TaskRecurrence,
   TaskSchedule,
   TaskWorkspace,
 } from '@hackathon/shared'
 import { map, type Observable } from 'rxjs'
+import { ActorContextService } from './actor-context.service'
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly headers = new HttpHeaders({ 'x-workspace-id': 'hackathon-demo' })
+  constructor(
+    private readonly http: HttpClient,
+    private readonly actorContext: ActorContextService
+  ) {}
 
-  constructor(private readonly http: HttpClient) {}
+  private get headers(): HttpHeaders {
+    const actorId = this.actorContext.selectedActorId()
+    const values: Record<string, string> = { 'x-workspace-id': 'hackathon-demo' }
+    if (actorId) values['x-actor-id'] = actorId
+    return new HttpHeaders(values)
+  }
 
   health(): Observable<HealthSummary> {
     return this.get<HealthSummary>('/api/health')
@@ -135,6 +153,54 @@ export class ApiService {
 
   deleteTaskSchedule(id: string): Observable<void> {
     return this.http.delete<void>(`/api/calendar/schedules/${id}`, { headers: this.headers })
+  }
+
+  demoActors(): Observable<MemoryActor[]> {
+    return this.get<MemoryActor[]>('/api/demo/actors')
+  }
+
+  capabilities(): Observable<CapabilitySummary[]> {
+    return this.get<CapabilitySummary[]>('/api/capabilities')
+  }
+
+  capability(id: string): Observable<CapabilityDetail> {
+    return this.get<CapabilityDetail>(`/api/capabilities/${id}`)
+  }
+
+  installCapability(id: string): Observable<CapabilityInstallation> {
+    return this.unwrap(this.http.post<ApiEnvelope<CapabilityInstallation>>(
+      `/api/capabilities/${id}/install`,
+      {},
+      { headers: this.headers }
+    ))
+  }
+
+  runCapability(id: string, request: CapabilityRunRequest): Observable<CapabilityRun> {
+    return this.unwrap(this.http.post<ApiEnvelope<CapabilityRun>>(
+      `/api/capabilities/${id}/runs`,
+      request,
+      { headers: this.headers }
+    ))
+  }
+
+  capabilityRuns(id: string): Observable<CapabilityRun[]> {
+    return this.get<CapabilityRun[]>(`/api/capabilities/${id}/runs`)
+  }
+
+  capabilityRun(id: string): Observable<CapabilityRun> {
+    return this.get<CapabilityRun>(`/api/runs/${id}`)
+  }
+
+  memorySearch(query: string): Observable<MemorySearchResponse> {
+    return this.get<MemorySearchResponse>(`/api/memory/search?q=${encodeURIComponent(query)}`)
+  }
+
+  memoryRecommendations(context: string): Observable<MemoryRecommendation[]> {
+    return this.get<MemoryRecommendation[]>(`/api/memory/recommendations?context=${encodeURIComponent(context)}`)
+  }
+
+  memoryAnalytics(): Observable<MemoryAnalytics> {
+    return this.get<MemoryAnalytics>('/api/memory/analytics')
   }
 
   message(error: unknown): string {

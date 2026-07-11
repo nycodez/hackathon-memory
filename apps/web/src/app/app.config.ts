@@ -10,6 +10,7 @@ const routes: Routes = [
   { path: 'library', title: 'Library · Knowledge Workspace', loadComponent: () => import('./pages/library.page').then((module) => module.LibraryPage) },
   { path: 'tasks', title: 'Tasks · Knowledge Workspace', loadComponent: () => import('./pages/tasks.page').then((module) => module.TasksPage) },
   { path: 'skills', title: 'Skills · Knowledge Workspace', loadComponent: () => import('./pages/skills.page').then((module) => module.SkillsPage) },
+  { path: 'capabilities/:capabilityId', title: 'Capability · Knowledge Workspace', loadComponent: () => import('./pages/capability.page').then((module) => module.CapabilityPage) },
   { path: 'calendar', title: 'Calendar · Knowledge Workspace', loadComponent: () => import('./pages/calendar.page').then((module) => module.CalendarPage) },
   { path: 'files', redirectTo: 'library', pathMatch: 'full' },
   { path: '**', redirectTo: '' },

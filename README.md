@@ -11,6 +11,9 @@ A clean Angular + Express starter for document-grounded hackathon products. It d
 - Nested Library folders with breadcrumb navigation and folder-aware uploads
 - Type-aware, full-screen previews for PDF, image, Markdown, and text files
 - Workspace task memory with 30 atomic office/accounting skills and ordered reusable task bundles
+- Searchable organizational memory for prompts, workflows, governed agent patterns, decisions, and best practices
+- Role-aware, immutable capability versions with provenance, stewardship, recommendations, and growth/gap analytics
+- One seeded, runnable Weekly AP Run continuity scenario with ordered accounting skills, citations, decisions, audit history, and duplicate-payment protection
 - One-time and recurring task schedules with a six-week calendar view
 - Small-file upload with visible ingestion, OCR, summarization, chunking, and vectorization states
 - Express API packaged as a Vercel Function under `/api`
@@ -23,7 +26,7 @@ A clean Angular + Express starter for document-grounded hackathon products. It d
 ```mermaid
 flowchart LR
   B[Angular browser app] -->|/api| V[Express Vercel Function]
-  V --> R[(AWS RDS PostgreSQL 17)]
+  V --> R[(Neon PostgreSQL)]
   R --> P[pgvector + full-text indexes]
   V -. scanned files .-> O[Optional OCR provider]
 ```
@@ -55,15 +58,24 @@ pnpm dev
 - API health: `http://localhost:3333/api/health`
 - PostgreSQL: `localhost:5433` (container port `5432`; host port `5433` avoids a common local PostgreSQL conflict)
 
-## AWS RDS PostgreSQL 17
+Seed and evaluate the organizational-memory proof after migrating:
 
-1. Create an RDS PostgreSQL 17 instance in or near `ap-southeast-1`.
-2. Connect with a database owner and run `pnpm db:migrate` using the RDS `DATABASE_URL`. The migration enables `vector`, `pgcrypto`, and `unaccent`.
-3. Require TLS with `PGSSLMODE=require`.
-4. Put the database URL in Vercel environment variables; never commit it.
-5. Keep network access narrow. For a durable deployment, use Vercel Secure Compute/static egress and allow only that egress in the RDS security group.
+```sh
+pnpm db:seed:memory
+pnpm eval:memory
+```
 
-The Vercel function is pinned to Singapore (`sin1`) by default to reduce latency to an RDS instance in Singapore. Change `regions` in `vercel.json` if the database lives elsewhere.
+The seed is idempotent and explicitly presents departure/succession as a hypothetical demo scenario. The official product core is searchable reusable AI memory, context, governance, recommendations, and analytics. Governed AP execution is optional proof infrastructure that demonstrates the stronger continuity claim: the captured capability can still produce an outcome after its source owner leaves.
+
+## Neon PostgreSQL
+
+1. Create a Neon PostgreSQL project in or near the Vercel function region.
+2. Run `pnpm db:migrate` with the Neon `DATABASE_URL`. The migration enables `vector`, `pgcrypto`, and `unaccent`.
+3. Run `pnpm db:seed:memory` once for the idempotent demo scenario.
+4. Keep `sslmode=require` in the connection string and store it only in Vercel environment variables.
+5. Use Neon's pooled connection string for the serverless Vercel runtime.
+
+The Vercel function is pinned to Singapore (`sin1`) by default. Choose a nearby Neon region or update `regions` in `vercel.json`.
 
 ## Vercel deployment
 
@@ -79,9 +91,10 @@ Set these environment variables for Preview and Production:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | Yes | RDS PostgreSQL connection string |
-| `PGSSLMODE` | Yes | Use `require` for RDS |
+| `DATABASE_URL` | Yes | Neon pooled PostgreSQL connection string |
+| `PGSSLMODE` | Yes | Use `require` for Neon |
 | `PG_POOL_MAX` | No | Per-function pool size; defaults to 5 |
+| `MEMORY_BOOTSTRAP_TOKEN` | Deployment only | Protects the idempotent migration/seed bootstrap endpoint |
 | `CORS_ORIGIN` | No | Only needed when the API is called from another origin |
 | `LLM_PROVIDER` | Bedrock use | Set to `bedrock` |
 | `AWS_REGION` | Bedrock use | Bedrock region; configured as `us-east-1` |
@@ -116,11 +129,23 @@ Run migrations before opening the deployed application. Migrations are intention
 | `POST` | `/api/tasks` | Memorize a named ordered bundle of skills |
 | `PUT` | `/api/tasks/:id` | Update a memorized task and its ordered skills |
 | `DELETE` | `/api/tasks/:id` | Remove a memorized task |
+| `GET` | `/api/demo/actors` | List actors for the hypothetical continuity demo |
+| `GET` | `/api/capabilities` | List governed capabilities for the selected actor |
+| `GET` | `/api/capabilities/:id` | Read active version, ordered skills, provenance, steward, and permission |
+| `POST` | `/api/capabilities/:id/install` | Install the active immutable version as a task |
+| `POST` | `/api/capabilities/:id/runs` | Run governed skills as the `x-actor-id` actor with an idempotency key |
+| `GET` | `/api/capabilities/:id/runs` | List persisted capability run history |
+| `GET` | `/api/runs/:id` | Read one run, its decisions, citations, steps, and accounting outcome |
+| `GET` | `/api/memory/search` | Search capabilities, tasks, skills, prompts, workflows, agents, decisions, and best practices |
+| `GET` | `/api/memory/recommendations` | Surface proven prior work relevant to supplied context |
+| `GET` | `/api/memory/analytics` | Show capability growth, duplication, and missing capability signals |
+| `POST` | `/api/admin/memory-bootstrap` | Token-protected idempotent production migration and seed operation |
 | `GET` | `/api/calendar` | List schedules and expanded occurrences for a bounded date window |
 | `PUT` | `/api/tasks/:id/schedule` | Add or replace a task's one-time or recurring schedule |
 | `DELETE` | `/api/calendar/schedules/:id` | Remove a task schedule |
 
 Every data query is scoped with `x-workspace-id`; the frontend currently sends `hackathon-demo`. Replace this demo header with verified identity and authorization before accepting untrusted users.
+Capability runs additionally require `x-actor-id`. Demo headers make authorization visible for the hackathon journey; they are not a substitute for production authentication.
 
 ## Where to customize
 

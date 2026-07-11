@@ -14,7 +14,9 @@
     "db:down": "docker compose down",
     "build": "pnpm --filter @hackathon/web build && pnpm --filter @hackathon/api build",
     "typecheck": "pnpm -r typecheck",
-    "db:migrate": "pnpm --filter @hackathon/api migrate"
+    "db:migrate": "pnpm --filter @hackathon/api migrate",
+    "db:seed:memory": "pnpm --filter @hackathon/api seed:memory",
+    "eval:memory": "pnpm --filter @hackathon/api eval:memory"
   },
   "workspaces": [
     "apps/*",

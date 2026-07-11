@@ -8,5 +8,6 @@ dist/
 !.env.local.example
 coverage/
 *.log
+.memory-bootstrap-token
 .DS_Store
 .vercel
