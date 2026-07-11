@@ -46,7 +46,7 @@ export default class ChatService {
       documentId: match.documentId,
       documentName: match.documentName,
       chunkId: match.chunkId,
-      excerpt: match.content.slice(0, 280),
+      excerpt: relevantExcerpt(match.content, analysis.searchQuery, analysis.monetaryIntent),
       score: Number(match.score.toFixed(4)),
     }))
     const documentCount = new Set(citations.map((citation) => citation.documentId)).size
@@ -173,4 +173,15 @@ function evidenceFallback(citations: Citation[]): string {
 
 function noAnswer(question: string): string {
   return `I could not find a grounded answer for “${question}” in the ready documents. Add relevant files or try a more specific query.`
+}
+
+function relevantExcerpt(content: string, searchQuery: string, monetaryIntent: boolean): string {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  const lower = normalized.toLocaleLowerCase()
+  const terms = searchQuery.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  const amountIndex = monetaryIntent ? normalized.search(/[$][\s]*[0-9]/) : -1
+  const termIndexes = terms.map((term) => lower.indexOf(term)).filter((index) => index >= 0)
+  const focus = amountIndex >= 0 ? amountIndex : (termIndexes.length ? Math.min(...termIndexes) : 0)
+  const start = Math.max(0, focus - 150)
+  return normalized.slice(start, start + 420)
 }

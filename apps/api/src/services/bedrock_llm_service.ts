@@ -48,7 +48,7 @@ export default class BedrockLlmService {
         ].join(' '),
       }],
       messages: [{ role: 'user', content: [{ text: question }] }],
-      inferenceConfig: { maxTokens: 240, temperature: 0, topP: 0.9 },
+      inferenceConfig: { maxTokens: 240, temperature: 0 },
     })
 
     const responseText = await this.sendText(command)
@@ -81,7 +81,6 @@ export default class BedrockLlmService {
       inferenceConfig: {
         maxTokens: 1_200,
         temperature: 0.1,
-        topP: 0.9,
       },
     })
 
