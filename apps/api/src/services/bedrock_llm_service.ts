@@ -1,9 +1,15 @@
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
+import { z } from 'zod'
 import { optionalEnv } from '../config/env.js'
 import type { SearchMatch } from '../repositories/documents_repository.js'
 
 const defaultContextLimit = 12_000
 const requestTimeoutMs = 30_000
+const queryAnalysisSchema = z.object({
+  searchQuery: z.string().trim().min(1).max(500),
+  intent: z.enum(['lookup', 'summary', 'comparison', 'procedure', 'other']),
+  monetaryIntent: z.boolean(),
+})
 
 export interface GroundedGeneration {
   text: string
@@ -12,11 +18,41 @@ export interface GroundedGeneration {
   contextPassages: number
 }
 
+export type QueryAnalysis = z.infer<typeof queryAnalysisSchema>
+
 export default class BedrockLlmService {
   private client?: BedrockRuntimeClient
 
   isConfigured(): boolean {
     return optionalEnv('LLM_PROVIDER') === 'bedrock' && Boolean(optionalEnv('BEDROCK_MODEL_ID'))
+  }
+
+  isQueryAnalysisConfigured(): boolean {
+    return optionalEnv('LLM_PROVIDER') === 'bedrock' && Boolean(optionalEnv('BEDROCK_LIGHTWEIGHT_MODEL_ID'))
+  }
+
+  async analyzeQuery(question: string): Promise<QueryAnalysis> {
+    const modelId = optionalEnv('BEDROCK_LIGHTWEIGHT_MODEL_ID')
+    if (!this.isQueryAnalysisConfigured() || !modelId) throw new Error('Bedrock query analysis is not configured')
+
+    const command = new ConverseCommand({
+      modelId,
+      system: [{
+        text: [
+          'Convert the user question into a retrieval plan.',
+          'Do not answer the question and do not explain your reasoning.',
+          'Return one JSON object only with keys searchQuery, intent, and monetaryIntent.',
+          'searchQuery must contain the essential subject terms and useful document synonyms in at most 25 words.',
+          'intent must be one of lookup, summary, comparison, procedure, or other.',
+          'monetaryIntent is true for price, fee, cost, payment, charge, deposit, or amount questions.',
+        ].join(' '),
+      }],
+      messages: [{ role: 'user', content: [{ text: question }] }],
+      inferenceConfig: { maxTokens: 240, temperature: 0, topP: 0.9 },
+    })
+
+    const responseText = await this.sendText(command)
+    return queryAnalysisSchema.parse(JSON.parse(extractJsonObject(responseText)))
   }
 
   async generate(question: string, matches: SearchMatch[]): Promise<GroundedGeneration> {
@@ -49,6 +85,16 @@ export default class BedrockLlmService {
       },
     })
 
+    const text = await this.sendText(command)
+    return {
+      text,
+      modelId,
+      contextCharacters: context.characters,
+      contextPassages: context.passages,
+    }
+  }
+
+  private async sendText(command: ConverseCommand): Promise<string> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
     try {
@@ -59,12 +105,7 @@ export default class BedrockLlmService {
         .join('\n')
         .trim()
       if (!text) throw new Error('Bedrock returned an empty response')
-      return {
-        text,
-        modelId,
-        contextCharacters: context.characters,
-        contextPassages: context.passages,
-      }
+      return text
     } finally {
       clearTimeout(timeout)
     }
@@ -104,4 +145,11 @@ function contextLimit(): number {
 
 function singleLine(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').slice(0, 240)
+}
+
+function extractJsonObject(value: string): string {
+  const start = value.indexOf('{')
+  const end = value.lastIndexOf('}')
+  if (start < 0 || end <= start) throw new Error('Bedrock query analysis did not return JSON')
+  return value.slice(start, end + 1)
 }

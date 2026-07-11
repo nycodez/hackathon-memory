@@ -32,7 +32,7 @@ The starter deliberately keeps the first deployment small:
 - Scanned PDFs and images move to `needs_ocr` until `ANTHROPIC_API_KEY` is configured.
 - Summaries are deterministic and embeddings use local feature hashing. Replace these services with challenge-specific models without changing the database or API contracts.
 
-For each query, the API retrieves ready workspace-scoped chunks, bounds and labels the full source passages, and sends that context with the user's question through Bedrock Converse. No relevant chunks means no model call.
+For each query, the configured lightweight Bedrock model creates a structured retrieval plan. The API uses that plan to retrieve ready workspace-scoped chunks, bounds and labels the full source passages, and sends that context with the user's question to the primary Bedrock model. No relevant chunks means no generation call.
 
 For a production-sized corpus, move raw objects to S3 or Vercel Blob, upload directly with signed URLs, and keep only metadata, extracted text, chunks, and vectors in PostgreSQL.
 

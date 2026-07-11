@@ -36,6 +36,10 @@ export interface SearchMatch {
   score: number
 }
 
+export interface SearchOptions {
+  monetaryIntent?: boolean
+}
+
 export interface StoredDocument extends KnowledgeDocument {
   rawData: Buffer
 }
@@ -166,24 +170,37 @@ export default class DocumentsRepository {
     })
   }
 
-  async search(workspaceId: string, text: string, embedding: number[], limit = 5): Promise<SearchMatch[]> {
+  async search(
+    workspaceId: string,
+    text: string,
+    embedding: number[],
+    limit = 5,
+    options: SearchOptions = {}
+  ): Promise<SearchMatch[]> {
+    const lexicalQuery = buildLexicalQuery(text)
+    const monetaryIntent = options.monetaryIntent ?? false
     const result = await query<SearchRow>(
       `WITH params AS (
-         SELECT plainto_tsquery('simple', $2) AS tsq, $3::vector AS embedding
+         SELECT to_tsquery('simple', $2) AS tsq, $3::vector AS embedding
        )
        SELECT c.id AS chunk_id, d.id AS document_id, d.name AS document_name, c.content,
               (
-                0.7 * (1 - (c.embedding <=> params.embedding)) +
-                0.3 * ts_rank_cd(c.search_vector, params.tsq)
+                0.45 * (1 - (c.embedding <=> params.embedding)) +
+                0.4 * least(ts_rank_cd(c.search_vector, params.tsq) * 4, 1) +
+                CASE
+                  WHEN $5::boolean AND c.content ~ '[$][[:space:]]*[0-9]' THEN 0.35
+                  WHEN $5::boolean AND c.content ~* '(cost|price|fee|amount|charge|deposit)' THEN 0.15
+                  ELSE 0
+                END
               ) AS score
        FROM document_chunks c
        JOIN knowledge_documents d ON d.id = c.document_id
        CROSS JOIN params
        WHERE c.workspace_id = $1 AND d.status = 'ready'
-         AND (c.search_vector @@ params.tsq OR (c.embedding <=> params.embedding) < 0.95)
+         AND (c.search_vector @@ params.tsq OR (c.embedding <=> params.embedding) < 0.92)
        ORDER BY score DESC
        LIMIT $4`,
-      [workspaceId, text, toVectorLiteral(embedding), limit]
+      [workspaceId, lexicalQuery, toVectorLiteral(embedding), limit, monetaryIntent]
     )
     return result.rows.map((row) => ({
       chunkId: row.chunk_id,
@@ -198,6 +215,19 @@ export default class DocumentsRepository {
     const result = await query('DELETE FROM knowledge_documents WHERE workspace_id = $1 AND id = $2', [workspaceId, id])
     return result.rowCount === 1
   }
+}
+
+const ignoredQueryTerms = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'for', 'from',
+  'how', 'i', 'in', 'is', 'it', 'me', 'much', 'of', 'on', 'or', 'the', 'to', 'what',
+  'when', 'where', 'which', 'who', 'why', 'with', 'would',
+])
+
+function buildLexicalQuery(value: string): string {
+  const sourceTerms = value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  const terms = new Set(sourceTerms.filter((term) => term.length > 1 && !ignoredQueryTerms.has(term)))
+  if (!terms.size) return '__no_lexical_match__'
+  return [...terms].slice(0, 24).map((term) => `${term}:*`).join(' | ')
 }
 
 function mapDocument(row: DocumentRow): KnowledgeDocument {

@@ -37,7 +37,7 @@ export interface Citation {
   score: number
 }
 
-export type DecisionTraceStage = 'input' | 'embedding' | 'retrieval' | 'selection' | 'response'
+export type DecisionTraceStage = 'input' | 'analysis' | 'embedding' | 'retrieval' | 'selection' | 'response'
 export type DecisionTraceOutcome = 'accepted' | 'completed' | 'no_match' | 'guardrail'
 
 export interface DecisionTraceEvent {

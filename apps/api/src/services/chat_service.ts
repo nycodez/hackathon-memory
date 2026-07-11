@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { AskResult, Citation, DecisionTraceEvent } from '@hackathon/shared'
 import ConversationsRepository from '../repositories/conversations_repository.js'
 import DocumentsRepository from '../repositories/documents_repository.js'
-import BedrockLlmService from './bedrock_llm_service.js'
+import BedrockLlmService, { type QueryAnalysis } from './bedrock_llm_service.js'
 import { embedText } from './vector_service.js'
 
 export default class ChatService {
@@ -19,9 +19,22 @@ export default class ChatService {
       throw new Error('Conversation not found')
     }
 
-    const embedding = embedText(content)
-    trace.push(traceEvent('embedding', 'Query representation created', 'Prepared a 1,024-dimension feature-hash vector for semantic comparison.', 'completed'))
-    const matches = await this.documents.search(workspaceId, content, embedding)
+    const analysis = await this.analyzeQuestion(content)
+    trace.push(traceEvent(
+      'analysis',
+      analysis.source === 'bedrock' ? 'Question parsed by economy model' : 'Query parser fallback applied',
+      `Intent: ${analysis.intent}. Retrieval query: “${analysis.searchQuery}”.`,
+      analysis.source === 'bedrock' ? 'completed' : 'guardrail'
+    ))
+    const embedding = embedText(analysis.searchQuery)
+    trace.push(traceEvent('embedding', 'Query representation created', 'Prepared a 1,024-dimension vector from the parsed retrieval query.', 'completed'))
+    const matches = await this.documents.search(
+      workspaceId,
+      analysis.searchQuery,
+      embedding,
+      5,
+      { monetaryIntent: analysis.monetaryIntent }
+    )
     trace.push(traceEvent(
       'retrieval',
       'Workspace corpus searched',
@@ -60,6 +73,23 @@ export default class ChatService {
     return { conversation, message }
   }
 
+  private async analyzeQuestion(question: string): Promise<QueryAnalysis & { source: 'bedrock' | 'fallback' }> {
+    if (this.bedrock.isQueryAnalysisConfigured()) {
+      try {
+        return { ...await this.bedrock.analyzeQuery(question), source: 'bedrock' }
+      } catch (error) {
+        console.error('Bedrock query analysis failed', error instanceof Error ? error.name : 'UnknownError')
+      }
+    }
+
+    return {
+      searchQuery: question,
+      intent: 'other',
+      monetaryIntent: /\b(costs?|prices?|fees?|amount|charges?|deposit|payment|how much)\b/i.test(question),
+      source: 'fallback',
+    }
+  }
+
   private async generateAnswer(
     question: string,
     matches: Awaited<ReturnType<DocumentsRepository['search']>>,
@@ -89,11 +119,12 @@ export default class ChatService {
           outcome: 'completed',
         }
       } catch (error) {
-        console.error('Bedrock generation failed', error instanceof Error ? error.name : 'UnknownError')
+        const errorName = error instanceof Error ? error.name : 'UnknownError'
+        console.error('Bedrock generation failed', errorName)
         return {
           answer: evidenceFallback(citations),
           title: 'Evidence fallback applied',
-          detail: 'Bedrock generation was unavailable; returned the retrieved evidence without generating unsupported content.',
+          detail: `Bedrock generation was unavailable (${errorName}); returned the retrieved evidence without generating unsupported content.`,
           outcome: 'guardrail',
         }
       }
