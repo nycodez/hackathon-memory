@@ -1,0 +1,127 @@
+# Hackathon Framework
+
+A clean Angular + Express starter for document-grounded hackathon products. It deploys as one Vercel project and uses PostgreSQL 17 with pgvector as the durable source of truth.
+
+## Included
+
+- Angular 21 standalone frontend with a minimal left navigation: Home, Query, Results, and Files
+- Chat-style Query page with a bottom composer and source citations
+- Durable, resumable conversation sessions on the Results page
+- Small-file upload with visible ingestion, OCR, summarization, chunking, and vectorization states
+- Express API packaged as a Vercel Function under `/api`
+- PostgreSQL migrations with workspace scoping, full-text search, `vector(1024)`, and HNSW indexing
+- Dependency-free feature-hash embeddings, so retrieval works before an external embedding provider is added
+- Optional Claude OCR for scanned PDFs and images
+
+## Architecture
+
+```mermaid
+flowchart LR
+  B[Angular browser app] -->|/api| V[Express Vercel Function]
+  V --> R[(AWS RDS PostgreSQL 17)]
+  R --> P[pgvector + full-text indexes]
+  V -. scanned files .-> O[Optional OCR provider]
+```
+
+The starter deliberately keeps the first deployment small:
+
+- Raw files up to 4 MB are stored in PostgreSQL `bytea`, which stays under Vercel's request-body ceiling and avoids adding object storage to the baseline.
+- Text, Markdown, CSV, JSON, HTML, and text-bearing PDFs process without an AI key.
+- Scanned PDFs and images move to `needs_ocr` until `ANTHROPIC_API_KEY` is configured.
+- Summaries are deterministic and embeddings use local feature hashing. Replace these services with challenge-specific models without changing the database or API contracts.
+
+For a production-sized corpus, move raw objects to S3 or Vercel Blob, upload directly with signed URLs, and keep only metadata, extracted text, chunks, and vectors in PostgreSQL.
+
+## Local run
+
+Prerequisites: Node.js 22+, pnpm 9, and Docker.
+
+```sh
+docker compose up -d
+cp apps/api/.env.example apps/api/.env
+```
+
+For the local container, set this value in `apps/api/.env`:
+
+```dotenv
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/hackathon
+PGSSLMODE=disable
+```
+
+Then install, migrate, and run both applications:
+
+```sh
+pnpm install
+pnpm db:migrate
+pnpm dev
+```
+
+- Web: `http://localhost:4200`
+- API health: `http://localhost:3333/api/health`
+
+## AWS RDS PostgreSQL 17
+
+1. Create an RDS PostgreSQL 17 instance in or near `ap-southeast-1`.
+2. Connect with a database owner and run `pnpm db:migrate` using the RDS `DATABASE_URL`. The migration enables `vector`, `pgcrypto`, and `unaccent`.
+3. Require TLS with `PGSSLMODE=require`.
+4. Put the database URL in Vercel environment variables; never commit it.
+5. Keep network access narrow. For a durable deployment, use Vercel Secure Compute/static egress and allow only that egress in the RDS security group.
+
+The Vercel function is pinned to Singapore (`sin1`) by default to reduce latency to an RDS instance in Singapore. Change `regions` in `vercel.json` if the database lives elsewhere.
+
+## Vercel deployment
+
+Import this repository as one Vercel project with the repository root as the project root. The checked-in configuration:
+
+- installs the pnpm workspace;
+- builds the Angular browser application;
+- publishes `dist/web/browser`;
+- deploys `api/[...path].ts` as the Express function;
+- preserves `/api/*` while rewriting other application routes to Angular's `index.html`.
+
+Set these environment variables for Preview and Production:
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | RDS PostgreSQL connection string |
+| `PGSSLMODE` | Yes | Use `require` for RDS |
+| `PG_POOL_MAX` | No | Per-function pool size; defaults to 5 |
+| `CORS_ORIGIN` | No | Only needed when the API is called from another origin |
+| `ANTHROPIC_API_KEY` | No | Enables OCR for scanned PDFs and images |
+| `ANTHROPIC_OCR_MODEL` | No | OCR-capable model override |
+
+Run migrations before opening the deployed application. Migrations are intentionally not executed during request startup or every Vercel build.
+
+## API surface
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | Database and vector contract health |
+| `GET` | `/api/dashboard` | Workspace counts |
+| `GET` | `/api/conversations` | Previous sessions |
+| `GET` | `/api/conversations/:id` | Resume a session |
+| `POST` | `/api/query` | Search the corpus and store a grounded exchange |
+| `GET` | `/api/documents` | Corpus files and pipeline states |
+| `POST` | `/api/documents` | Ingest one multipart file |
+| `POST` | `/api/documents/:id/process` | Process or retry an ingested file |
+| `DELETE` | `/api/documents/:id` | Remove a file and its chunks |
+
+Every data query is scoped with `x-workspace-id`; the frontend currently sends `hackathon-demo`. Replace this demo header with verified identity and authorization before accepting untrusted users.
+
+## Where to customize
+
+- Brand and navigation: `apps/web/src/app/layout/app-shell.component.ts`
+- Visual system: `apps/web/src/styles.css`
+- Query behavior: `apps/api/src/services/chat_service.ts`
+- Embeddings: `apps/api/src/services/vector_service.ts`
+- Extraction and OCR: `apps/api/src/services/ingestion_service.ts`
+- Database schema: `apps/api/src/db/migrations.ts`
+
+## Production hardening checklist
+
+- Add authentication and derive `workspace_id` from the authenticated principal, not a browser-controlled header.
+- Move large raw uploads to object storage with signed upload URLs.
+- Add a durable queue for long-running OCR and indexing jobs.
+- Add malware scanning, MIME signature validation, rate limits, and per-workspace quotas.
+- Replace deterministic answer assembly with a grounded model call and preserve citations.
+- Add automated migration, API, retrieval, and browser tests before public use.

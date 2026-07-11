@@ -1,0 +1,25 @@
+{
+  "name": "hackathon-framework",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:api": "pnpm --filter @hackathon/api dev",
+    "dev:web": "pnpm --filter @hackathon/web start",
+    "build": "pnpm --filter @hackathon/web build && pnpm --filter @hackathon/api build",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter @hackathon/api migrate"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.0"
+  }
+}
+
