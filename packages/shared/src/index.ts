@@ -36,11 +36,24 @@ export interface Citation {
   score: number
 }
 
+export type DecisionTraceStage = 'input' | 'embedding' | 'retrieval' | 'selection' | 'response'
+export type DecisionTraceOutcome = 'accepted' | 'completed' | 'no_match' | 'guardrail'
+
+export interface DecisionTraceEvent {
+  id: string
+  stage: DecisionTraceStage
+  title: string
+  detail: string
+  outcome: DecisionTraceOutcome
+  createdAt: string
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
   citations: Citation[]
+  decisionTrace: DecisionTraceEvent[]
   createdAt: string
 }
 

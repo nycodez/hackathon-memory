@@ -1,4 +1,4 @@
-import type { ChatMessage, Citation, Conversation, ConversationSummary } from '@hackathon/shared'
+import type { ChatMessage, Citation, Conversation, ConversationSummary, DecisionTraceEvent } from '@hackathon/shared'
 import type { QueryResultRow } from 'pg'
 import { query, transaction } from '../db/pool.js'
 
@@ -16,6 +16,7 @@ interface MessageRow extends QueryResultRow {
   role: ChatMessage['role']
   content: string
   citations: unknown
+  decision_trace: unknown
   created_at: Date
 }
 
@@ -52,7 +53,7 @@ export default class ConversationsRepository {
     const session = sessionResult.rows[0]
     if (!session) return null
     const messages = await query<MessageRow>(
-      `SELECT id, role, content, citations, created_at
+      `SELECT id, role, content, citations, decision_trace, created_at
        FROM conversation_messages
        WHERE workspace_id = $1 AND conversation_id = $2
        ORDER BY created_at`,
@@ -77,7 +78,8 @@ export default class ConversationsRepository {
     conversationId: string,
     userContent: string,
     assistantContent: string,
-    citations: Citation[]
+    citations: Citation[],
+    decisionTrace: DecisionTraceEvent[]
   ): Promise<ChatMessage> {
     return transaction(async (client) => {
       const ownsSession = await client.query(
@@ -91,10 +93,11 @@ export default class ConversationsRepository {
         [workspaceId, conversationId, userContent]
       )
       const result = await client.query<MessageRow>(
-        `INSERT INTO conversation_messages (workspace_id, conversation_id, role, content, citations)
-         VALUES ($1, $2, 'assistant', $3, $4)
-         RETURNING id, role, content, citations, created_at`,
-        [workspaceId, conversationId, assistantContent, JSON.stringify(citations)]
+        `INSERT INTO conversation_messages (
+           workspace_id, conversation_id, role, content, citations, decision_trace
+         ) VALUES ($1, $2, 'assistant', $3, $4, $5)
+         RETURNING id, role, content, citations, decision_trace, created_at`,
+        [workspaceId, conversationId, assistantContent, JSON.stringify(citations), JSON.stringify(decisionTrace)]
       )
       await client.query('UPDATE conversation_sessions SET updated_at = now() WHERE id = $1', [conversationId])
       const message = result.rows[0]
@@ -121,6 +124,7 @@ function mapMessage(row: MessageRow): ChatMessage {
     role: row.role,
     content: row.content,
     citations: Array.isArray(row.citations) ? (row.citations as Citation[]) : [],
+    decisionTrace: Array.isArray(row.decision_trace) ? (row.decision_trace as DecisionTraceEvent[]) : [],
     createdAt: row.created_at.toISOString(),
   }
 }

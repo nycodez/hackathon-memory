@@ -91,4 +91,11 @@ export const migrations = [
         ON ingestion_events (document_id, created_at);
     `,
   },
+  {
+    id: '002_conversation_decision_trace',
+    sql: `
+      ALTER TABLE conversation_messages
+        ADD COLUMN IF NOT EXISTS decision_trace jsonb NOT NULL DEFAULT '[]'::jsonb;
+    `,
+  },
 ] as const

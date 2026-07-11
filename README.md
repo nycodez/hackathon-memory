@@ -6,6 +6,7 @@ A clean Angular + Express starter for document-grounded hackathon products. It d
 
 - Angular 21 standalone frontend with a minimal left navigation: Home, Query, Results, and Files
 - Chat-style Query page with a bottom composer and source citations
+- Read-only Decision Console with persisted, observable retrieval and response-policy events
 - Durable, resumable conversation sessions on the Results page
 - Small-file upload with visible ingestion, OCR, summarization, chunking, and vectorization states
 - Express API packaged as a Vercel Function under `/api`

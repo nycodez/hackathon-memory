@@ -1,14 +1,15 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, ViewChild, inject, signal } from '@angular/core'
+import { DatePipe } from '@angular/common'
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import type { Conversation } from '@hackathon/shared'
+import type { Conversation, DecisionTraceEvent } from '@hackathon/shared'
 import { distinctUntilChanged, finalize, map } from 'rxjs'
 import { ApiService } from '../core/api.service'
 
 @Component({
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink],
   template: `
     <section class="page query-page">
       <header class="page-header compact-header">
@@ -63,6 +64,32 @@ import { ApiService } from '../core/api.service'
         <button class="send-button" type="submit" [disabled]="messageControl.invalid || sending()" aria-label="Send message">↑</button>
         <small>Grounded in ready files · Ctrl/⌘ + Enter to send</small>
       </form>
+
+      <div class="decision-console" role="log" aria-live="polite" data-readonly="true" aria-label="Decision console">
+        <header class="console-header">
+          <div><span class="console-kicker">Read only</span><h2>Decision Console</h2></div>
+          <span class="console-mode" [class.is-live]="sending()"><i></i>{{ sending() ? 'Running' : 'Recorded' }}</span>
+        </header>
+        <p class="console-disclosure">Observable system decisions and retrieval events. Hidden model reasoning is never displayed.</p>
+
+        <div class="console-events">
+          @if (!displayedTrace().length) {
+            <div class="console-empty"><span>›_</span><p>Submit a query to see the decision flow.</p></div>
+          } @else {
+            @for (event of displayedTrace(); track event.id; let index = $index) {
+              <article class="console-event" [attr.data-outcome]="event.outcome">
+                <div class="event-rail"><span>{{ index + 1 }}</span><i></i></div>
+                <div class="event-copy">
+                  <div><strong>{{ event.title }}</strong><time>{{ event.createdAt | date:'mediumTime' }}</time></div>
+                  <p>{{ event.detail }}</p>
+                  <small>{{ event.stage }} · {{ event.outcome }}</small>
+                </div>
+              </article>
+            }
+          }
+        </div>
+        <footer>Persisted with the latest assistant message</footer>
+      </div>
     </section>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -78,6 +105,12 @@ export class QueryPage implements OnInit {
   protected readonly loading = signal(false)
   protected readonly sending = signal(false)
   protected readonly error = signal('')
+  private readonly pendingTrace = signal<DecisionTraceEvent[]>([])
+  protected readonly displayedTrace = computed(() => {
+    if (this.pendingTrace().length) return this.pendingTrace()
+    const messages = this.conversation()?.messages ?? []
+    return [...messages].reverse().find((message) => message.role === 'assistant')?.decisionTrace ?? []
+  })
 
   ngOnInit(): void {
     this.route.paramMap.pipe(
@@ -87,6 +120,7 @@ export class QueryPage implements OnInit {
     ).subscribe((id) => {
       if (!id) {
         this.conversation.set(null)
+        this.pendingTrace.set([])
         this.error.set('')
         return
       }
@@ -110,6 +144,10 @@ export class QueryPage implements OnInit {
     if (!content || this.sending()) return
     this.sending.set(true)
     this.error.set('')
+    this.pendingTrace.set([
+      pendingEvent('input', 'Query submitted', `Accepted ${content.length} characters for the active workspace.`, 'accepted'),
+      pendingEvent('retrieval', 'Corpus retrieval running', 'Comparing the query with ready document chunks using hybrid search.', 'accepted'),
+    ])
     const existingId = this.conversation()?.id
     this.api.ask(content, existingId).pipe(
       takeUntilDestroyed(this.destroyRef),
@@ -117,11 +155,15 @@ export class QueryPage implements OnInit {
     ).subscribe({
       next: (result) => {
         this.conversation.set(result.conversation)
+        this.pendingTrace.set([])
         this.messageControl.reset()
         if (!existingId) void this.router.navigate(['/query', result.conversation.id], { replaceUrl: true })
         queueMicrotask(() => this.scrollToBottom())
       },
-      error: (error: unknown) => this.error.set(this.api.message(error)),
+      error: (error: unknown) => {
+        this.pendingTrace.set([])
+        this.error.set(this.api.message(error))
+      },
     })
   }
 
@@ -143,5 +185,21 @@ export class QueryPage implements OnInit {
   private scrollToBottom(): void {
     const element = this.chatSurface?.nativeElement
     if (element) element.scrollTop = element.scrollHeight
+  }
+}
+
+function pendingEvent(
+  stage: DecisionTraceEvent['stage'],
+  title: string,
+  detail: string,
+  outcome: DecisionTraceEvent['outcome']
+): DecisionTraceEvent {
+  return {
+    id: `${stage}-${crypto.randomUUID()}`,
+    stage,
+    title,
+    detail,
+    outcome,
+    createdAt: new Date().toISOString(),
   }
 }
