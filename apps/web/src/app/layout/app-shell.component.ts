@@ -30,13 +30,13 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
           <hr class="nav-section-divider" />
           <span class="nav-section-label">Organizational memory</span>
 
-          <a class="custom-nav-start" routerLink="/memory" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+          <a class="memory-nav custom-nav-start" routerLink="/memory" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
             <span aria-hidden="true">◇</span> Capabilities
           </a>
-          <a routerLink="/memory/recommendations" routerLinkActive="active">
+          <a class="memory-nav" routerLink="/memory/recommendations" routerLinkActive="active">
             <span aria-hidden="true">◎</span> Recommendations
           </a>
-          <a routerLink="/memory/skills" routerLinkActive="active">
+          <a class="memory-nav" routerLink="/memory/skills" routerLinkActive="active">
             <span aria-hidden="true">▦</span> Skills
           </a>
         </nav>
