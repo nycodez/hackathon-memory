@@ -198,6 +198,9 @@ a { color: inherit; }
 .file-name { min-width: 0; display: flex; align-items: center; gap: 12px; }
 .file-name > div { min-width: 0; display: grid; gap: 4px; }
 .file-name strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-link { min-width: 0; max-width: 100%; width: fit-content; padding: 0; overflow: hidden; border: 0; color: #292529; background: transparent; cursor: pointer; font-size: 12px; font-weight: 650; line-height: normal; text-align: left; text-decoration: underline; text-decoration-color: #b7adb2; text-decoration-thickness: 1px; text-underline-offset: 3px; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-link:hover { color: var(--accent); text-decoration-color: currentColor; }
+.file-preview-link:focus-visible { border-radius: 3px; outline: 2px solid var(--accent); outline-offset: 3px; }
 .file-name small { color: #938c90; font-size: 9px; }
 .file-icon { flex: 0 0 auto; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; color: var(--accent); background: var(--accent-soft); font-size: 18px; }
 .status-pill { width: fit-content; padding: 5px 9px; border-radius: 999px; color: #5b5558; background: #f2f0f1; display: flex; gap: 6px; align-items: center; font-size: 9px; font-weight: 600; text-transform: capitalize; }
@@ -209,6 +212,21 @@ a { color: inherit; }
 .status-pill[data-status="extracting"], .status-pill[data-status="summarizing"], .status-pill[data-status="vectorizing"] { color: #78501e; background: #fff7e7; }
 .status-pill[data-status="extracting"] i, .status-pill[data-status="summarizing"] i, .status-pill[data-status="vectorizing"] i { background: #d99a3a; }
 .file-error { max-width: 230px; margin-top: 5px; display: block; color: #a34038; font-size: 8px; line-height: 1.35; }
+.file-preview-modal { position: fixed; z-index: 1000; inset: 0; min-width: 0; min-height: 0; color: #292529; background: #f5f3f4; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.file-preview-header { min-height: 86px; padding: 16px 24px; border-bottom: 1px solid var(--border); background: #fff; display: flex; align-items: center; justify-content: space-between; gap: 24px; box-shadow: 0 3px 14px rgba(34, 28, 31, .05); }
+.file-preview-header > div { min-width: 0; display: grid; gap: 3px; }
+.file-preview-header h2 { margin: 0; overflow: hidden; font-size: 17px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-header small { color: var(--muted); font-size: 10px; }
+.file-preview-close { flex: 0 0 auto; width: 42px; height: 42px; padding: 0; border: 1px solid #d3ced1; border-radius: 50%; color: #4f484c; background: #fff; display: grid; place-items: center; cursor: pointer; font-size: 28px; font-weight: 300; line-height: 1; transition: 140ms ease; }
+.file-preview-close:hover { border-color: #a9a0a5; background: #f6f3f5; transform: scale(1.03); }
+.file-preview-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.file-preview-body { min-width: 0; min-height: 0; padding: 20px; overflow: auto; }
+.file-preview-pdf { width: 100%; height: 100%; min-height: 480px; border: 1px solid #d5d0d3; border-radius: 12px; background: #fff; display: block; box-shadow: 0 10px 34px rgba(35, 29, 32, .08); }
+.file-preview-markdown { width: min(880px, 100%); min-height: 100%; margin: 0 auto; padding: clamp(30px, 6vw, 72px); border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 10px 34px rgba(35, 29, 32, .06); }
+.file-preview-state { height: 100%; min-height: 300px; color: var(--muted); display: grid; place-content: center; text-align: center; }
+.file-preview-state.error { color: #8c302a; }
+.file-preview-state strong { font-size: 15px; }
+.file-preview-state p { margin: 8px 0 0; font-size: 12px; }
 
 @media (max-width: 960px) {
   .app-shell { grid-template-columns: 78px minmax(0, 1fr); }
@@ -263,4 +281,10 @@ a { color: inherit; }
   .file-head { display: none; }
   .file-row > :nth-child(3), .file-row > :nth-child(4) { display: none; }
   .upload-note { align-items: flex-start; }
+  .file-preview-header { min-height: 74px; padding: 12px 16px; }
+  .file-preview-header .eyebrow, .file-preview-header small { display: none; }
+  .file-preview-header h2 { font-size: 14px; }
+  .file-preview-close { width: 38px; height: 38px; }
+  .file-preview-body { padding: 10px; }
+  .file-preview-markdown { padding: 24px 20px; }
 }

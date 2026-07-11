@@ -75,6 +75,13 @@ export class ApiService {
     return this.unwrap(this.http.post<ApiEnvelope<KnowledgeDocument>>(`/api/documents/${id}/process`, {}, { headers: this.headers }))
   }
 
+  documentContent(id: string): Observable<Blob> {
+    return this.http.get(`/api/documents/${id}/content`, {
+      headers: this.headers,
+      responseType: 'blob',
+    })
+  }
+
   deleteDocument(id: string): Observable<void> {
     return this.http.delete<void>(`/api/documents/${id}`, { headers: this.headers })
   }

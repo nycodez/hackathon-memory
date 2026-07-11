@@ -1,10 +1,23 @@
 import { DatePipe, DecimalPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, OnInit, ViewChild, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser'
 import { ActivatedRoute, Router } from '@angular/router'
-import type { LibraryListing } from '@hackathon/shared'
+import type { KnowledgeDocument, LibraryListing } from '@hackathon/shared'
 import { distinctUntilChanged, finalize, map, switchMap } from 'rxjs'
 import { ApiService } from '../core/api.service'
+import { MarkdownPipe } from '../core/markdown.pipe'
+
+type PreviewType = 'pdf' | 'markdown'
+type PreviewableDocument = KnowledgeDocument & { previewType: PreviewType | null }
+
+interface FilePreview {
+  document: PreviewableDocument
+  loading: boolean
+  error: string
+  markdown: string
+  pdfUrl: SafeResourceUrl | null
+}
 
 const emptyListing: LibraryListing = {
   currentFolder: null,
@@ -15,7 +28,7 @@ const emptyListing: LibraryListing = {
 
 @Component({
   standalone: true,
-  imports: [DatePipe, DecimalPipe],
+  imports: [DatePipe, DecimalPipe, MarkdownPipe],
   template: `
     <section class="page">
       <header class="page-header compact-header">
@@ -71,9 +84,19 @@ const emptyListing: LibraryListing = {
         } @else if (listing().documents.length) {
           <div class="file-table" role="table" aria-label="Library documents">
             <div class="file-row file-head" role="row"><span>File</span><span>Pipeline</span><span>Size</span><span>Updated</span></div>
-            @for (document of listing().documents; track document.id) {
+            @for (document of previewableDocuments(); track document.id) {
               <article class="file-row" role="row">
-                <div class="file-name"><span class="file-icon">▱</span><div><strong>{{ document.name }}</strong><small>{{ document.mimeType }} · {{ document.chunkCount }} chunks</small></div></div>
+                <div class="file-name">
+                  <span class="file-icon">▱</span>
+                  <div>
+                    @if (document.previewType) {
+                      <button class="file-preview-link" type="button" (click)="openPreview(document)">{{ document.name }}</button>
+                    } @else {
+                      <strong>{{ document.name }}</strong>
+                    }
+                    <small>{{ document.mimeType }} · {{ document.chunkCount }} chunks</small>
+                  </div>
+                </div>
                 <div><span class="status-pill" [attr.data-status]="document.status"><i></i>{{ document.status }}</span>@if (document.errorMessage) { <small class="file-error">{{ document.errorMessage }}</small> }</div>
                 <span>{{ document.sizeBytes / 1024 | number:'1.0-1' }} KB</span>
                 <span>{{ document.updatedAt | date:'short' }}</span>
@@ -84,15 +107,47 @@ const emptyListing: LibraryListing = {
         }
       }
     </section>
+
+    @if (preview(); as filePreview) {
+      <section class="file-preview-modal" role="dialog" aria-modal="true" aria-labelledby="file-preview-title">
+        <header class="file-preview-header">
+          <div>
+            <span class="eyebrow">File preview</span>
+            <h2 id="file-preview-title">{{ filePreview.document.name }}</h2>
+            <small>{{ filePreview.document.mimeType }} · {{ filePreview.document.sizeBytes / 1024 | number:'1.0-1' }} KB</small>
+          </div>
+          <button #previewClose class="file-preview-close" type="button" (click)="closePreview()" aria-label="Close file preview">×</button>
+        </header>
+
+        <div class="file-preview-body">
+          @if (filePreview.loading) {
+            <div class="file-preview-state" role="status">Loading preview…</div>
+          } @else if (filePreview.error) {
+            <div class="file-preview-state error" role="alert">
+              <strong>Preview unavailable</strong>
+              <p>{{ filePreview.error }}</p>
+            </div>
+          } @else if (filePreview.pdfUrl) {
+            <iframe class="file-preview-pdf" [src]="filePreview.pdfUrl" [title]="filePreview.document.name"></iframe>
+          } @else {
+            <article class="file-preview-markdown markdown-content" [innerHTML]="filePreview.markdown | markdown"></article>
+          }
+        </div>
+      </section>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FilesPage implements OnInit {
   @ViewChild('fileInput') private fileInput?: ElementRef<HTMLInputElement>
+  @ViewChild('previewClose') private previewClose?: ElementRef<HTMLButtonElement>
   private readonly api = inject(ApiService)
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly sanitizer = inject(DomSanitizer)
+  private pdfObjectUrl: string | null = null
+  private previewRequest = 0
   protected readonly listing = signal<LibraryListing>(emptyListing)
   protected readonly currentFolderId = signal<string | null>(null)
   protected readonly loading = signal(true)
@@ -103,6 +158,15 @@ export class FilesPage implements OnInit {
   protected readonly folderDraft = signal('')
   protected readonly error = signal('')
   protected readonly hasItems = computed(() => Boolean(this.listing().folders.length || this.listing().documents.length))
+  protected readonly previewableDocuments = computed<PreviewableDocument[]>(() => this.listing().documents.map((document) => ({
+    ...document,
+    previewType: documentPreviewType(document),
+  })))
+  protected readonly preview = signal<FilePreview | null>(null)
+
+  constructor() {
+    this.destroyRef.onDestroy(() => this.revokePdfObjectUrl())
+  }
 
   ngOnInit(): void {
     this.route.queryParamMap.pipe(
@@ -173,12 +237,57 @@ export class FilesPage implements OnInit {
       takeUntilDestroyed(this.destroyRef),
       finalize(() => this.deletingId.set(null))
     ).subscribe({
-      next: () => this.listing.update((listing) => ({
-        ...listing,
-        documents: listing.documents.filter((document) => document.id !== id),
-      })),
+      next: () => {
+        if (this.preview()?.document.id === id) this.closePreview()
+        this.listing.update((listing) => ({
+          ...listing,
+          documents: listing.documents.filter((document) => document.id !== id),
+        }))
+      },
       error: (error: unknown) => this.error.set(this.api.message(error)),
     })
+  }
+
+  protected openPreview(document: PreviewableDocument): void {
+    if (!document.previewType) return
+    const request = ++this.previewRequest
+    this.revokePdfObjectUrl()
+    this.preview.set({ document, loading: true, error: '', markdown: '', pdfUrl: null })
+    setTimeout(() => this.previewClose?.nativeElement.focus())
+
+    this.api.documentContent(document.id).pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe({
+      next: (content) => {
+        if (request !== this.previewRequest || this.preview()?.document.id !== document.id) return
+        if (document.previewType === 'pdf') {
+          this.pdfObjectUrl = URL.createObjectURL(content)
+          this.preview.update((current) => current ? {
+            ...current,
+            loading: false,
+            pdfUrl: this.sanitizer.bypassSecurityTrustResourceUrl(this.pdfObjectUrl ?? ''),
+          } : null)
+          return
+        }
+
+        void content.text().then((markdown) => {
+          if (request !== this.previewRequest || this.preview()?.document.id !== document.id) return
+          this.preview.update((current) => current ? { ...current, loading: false, markdown } : null)
+        }).catch(() => this.setPreviewError(request, document.id, 'The Markdown file could not be read.'))
+      },
+      error: (error: unknown) => this.setPreviewError(request, document.id, this.api.message(error)),
+    })
+  }
+
+  protected closePreview(): void {
+    this.previewRequest += 1
+    this.revokePdfObjectUrl()
+    this.preview.set(null)
+  }
+
+  @HostListener('document:keydown.escape')
+  protected closePreviewWithEscape(): void {
+    if (this.preview()) this.closePreview()
   }
 
   protected deleteFolder(id: string): void {
@@ -205,4 +314,23 @@ export class FilesPage implements OnInit {
       error: (error: unknown) => this.error.set(this.api.message(error)),
     })
   }
+
+  private setPreviewError(request: number, documentId: string, message: string): void {
+    if (request !== this.previewRequest || this.preview()?.document.id !== documentId) return
+    this.preview.update((current) => current ? { ...current, loading: false, error: message } : null)
+  }
+
+  private revokePdfObjectUrl(): void {
+    if (!this.pdfObjectUrl) return
+    URL.revokeObjectURL(this.pdfObjectUrl)
+    this.pdfObjectUrl = null
+  }
+}
+
+function documentPreviewType(document: KnowledgeDocument): PreviewType | null {
+  const name = document.name.toLowerCase()
+  const mimeType = document.mimeType.toLowerCase().split(';', 1)[0]?.trim()
+  if (mimeType === 'application/pdf' || name.endsWith('.pdf')) return 'pdf'
+  if (mimeType === 'text/markdown' || name.endsWith('.md') || name.endsWith('.markdown')) return 'markdown'
+  return null
 }

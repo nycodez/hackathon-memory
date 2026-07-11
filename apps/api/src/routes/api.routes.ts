@@ -118,6 +118,29 @@ router.get('/documents', asyncRoute(async (req, res) => {
   res.json({ success: true, data: await documents.list(workspaceId(req)) })
 }))
 
+router.get('/documents/:id/content', asyncRoute(async (req, res) => {
+  const parsed = idSchema.safeParse(req.params.id)
+  if (!parsed.success) return res.status(400).json(validationError('id', 'A valid document ID is required'))
+  const document = await documents.get(workspaceId(req), parsed.data)
+  if (!document) return res.status(404).json(notFound('document'))
+
+  const previewType = documentPreviewType(document.name, document.mimeType)
+  if (!previewType) {
+    return res.status(415).json({
+      success: false,
+      errors: [{ rule: 'unsupported_type', field: 'document', message: 'Preview is available for PDF and Markdown files' }],
+    })
+  }
+
+  res.set({
+    'Cache-Control': 'private, no-store',
+    'Content-Type': previewType === 'pdf' ? 'application/pdf' : 'text/markdown; charset=utf-8',
+    'Content-Disposition': 'inline',
+    'X-Content-Type-Options': 'nosniff',
+  })
+  return res.send(document.rawData)
+}))
+
 router.get('/library', asyncRoute(async (req, res) => {
   const parsed = optionalFolderIdSchema.safeParse(req.query.folderId)
   if (!parsed.success) return res.status(400).json(validationError('folderId', 'A valid folder ID is required'))
@@ -194,6 +217,18 @@ function validationError(field: string, message: string) {
 
 function notFound(field: string) {
   return { success: false, errors: [{ rule: 'not_found', field, message: `${field} was not found` }] }
+}
+
+function documentPreviewType(name: string, mimeType: string): 'pdf' | 'markdown' | null {
+  const normalizedName = name.toLowerCase()
+  const normalizedMimeType = mimeType.toLowerCase().split(';', 1)[0]?.trim()
+  if (normalizedMimeType === 'application/pdf' || normalizedName.endsWith('.pdf')) return 'pdf'
+  if (
+    normalizedMimeType === 'text/markdown' ||
+    normalizedName.endsWith('.md') ||
+    normalizedName.endsWith('.markdown')
+  ) return 'markdown'
+  return null
 }
 
 export default router
