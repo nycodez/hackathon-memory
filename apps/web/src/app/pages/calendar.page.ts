@@ -53,7 +53,6 @@ const recurrenceLabels: Record<TaskRecurrence, string> = {
           <h1>Calendar</h1>
           <p>See when remembered tasks are planned to run and assign a one-time or recurring schedule.</p>
         </div>
-        <a class="button primary" href="#schedule-task">Schedule a task</a>
       </header>
 
       @if (error()) {
