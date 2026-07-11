@@ -15,10 +15,20 @@ import type {
   RunCapabilityInput,
   SearchCapabilitiesInput,
 } from '@hackathon/shared'
-import type { PoolClient, QueryResultRow } from 'pg'
+import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 import { query, transaction } from '../db/pool.js'
-import { demoCapabilities, demoPeople, demoTeams } from '../data/capability_demo_data.js'
-import { decideCapabilityAccess, runPropertyOperationsDigest } from '../services/capability_policy_service.js'
+import {
+  DEMO_AUTHOR_ID,
+  DEMO_CAPABILITY_KEY,
+  DEMO_GOVERNANCE_ID,
+  DEMO_SUCCESSOR_ID,
+  demoCapabilities,
+  demoEvidenceDocuments,
+  demoPeople,
+  demoTeams,
+} from '../data/capability_demo_data.js'
+import CapabilityExecutionService, { type CapabilityEvidence } from '../services/capability_execution_service.js'
+import { decideCapabilityAccess } from '../services/capability_policy_service.js'
 import { embedText, toVectorLiteral } from '../services/vector_service.js'
 
 interface AssetRow extends QueryResultRow {
@@ -66,6 +76,8 @@ const assetSelect = `
 `
 
 export default class CapabilitiesRepository {
+  private readonly execution = new CapabilityExecutionService()
+
   async list(workspaceId: string, actor: DemoActor): Promise<CapabilityAsset[]> {
     const result = await query<AssetRow>(
       `${assetSelect}
@@ -368,33 +380,100 @@ export default class CapabilitiesRepository {
       [workspaceId, row.id, actor.id, row.current_version]
     )
     if (!installation.rowCount) return 'not_installed'
-    if (assetKey !== 'ast-014' && assetKey !== 'skill-014') throw new Error('Capability has no deterministic runtime')
+    if (assetKey !== DEMO_CAPABILITY_KEY) throw new Error('Capability has no runnable agent')
 
-    const provenancePath = await this.provenancePath(workspaceId, assetKey === 'skill-014' ? 'ast-014' : assetKey)
-    if (assetKey === 'skill-014') provenancePath.push('DEPENDS_ON skill-014')
-    const output = runPropertyOperationsDigest(input, actor.name)
-    const result = await query<{ id: string; created_at: Date }>(
-      `INSERT INTO capability_skill_runs (
-         workspace_id, capability_id, actor_person_id, version, status, input, output, provenance_path
-       ) VALUES ($1,$2,$3,$4,'completed',$5,$6,$7)
-       RETURNING id, created_at`,
-      [workspaceId, row.id, actor.id, row.current_version, input, output, JSON.stringify(provenancePath)]
+    const idempotencyKey = capabilityRunIdempotencyKey(input)
+    const existingRun = await query<{ id: string }>(
+      `SELECT id FROM capability_skill_runs
+       WHERE workspace_id = $1 AND capability_id = $2 AND idempotency_key = $3`,
+      [workspaceId, row.id, idempotencyKey]
     )
+    if (existingRun.rows[0]) {
+      await this.audit(workspaceId, actor.id, row.id, 'run', 'allow', {
+        version: row.current_version,
+        replayed: true,
+        idempotencyKey,
+      })
+      const persisted = await this.getRun(workspaceId, existingRun.rows[0].id, actor)
+      if (persisted && persisted !== 'denied') return persisted
+      throw new Error('Idempotent capability run could not be loaded')
+    }
+
+    const provenancePath = await this.provenancePath(workspaceId, assetKey)
+    const evidenceResult = await query<{
+      chunk_id: string
+      document_id: string
+      document_name: string
+      content: string
+      relationship: CapabilityEvidence['relationship']
+    }>(
+      `SELECT c.id AS chunk_id, d.id AS document_id, d.name AS document_name,
+              c.content, ad.relationship
+       FROM capability_asset_documents ad
+       JOIN knowledge_documents d ON d.id = ad.document_id AND d.workspace_id = $1 AND d.status = 'ready'
+       JOIN document_chunks c ON c.document_id = d.id AND c.workspace_id = $1
+       WHERE ad.capability_id = $2
+       ORDER BY CASE ad.relationship
+         WHEN 'instructions' THEN 1 WHEN 'evidence' THEN 2
+         WHEN 'decision_context' THEN 3 ELSE 4 END, d.name, c.chunk_index`,
+      [workspaceId, row.id]
+    )
+    const evidence: CapabilityEvidence[] = evidenceResult.rows.map((item) => ({
+      chunkId: item.chunk_id,
+      documentId: item.document_id,
+      documentName: item.document_name,
+      content: item.content,
+      score: 1,
+      relationship: item.relationship,
+    }))
+    const execution = await this.execution.runWeeklyAp(input, actor, evidence)
+    let result: QueryResult<{ id: string; created_at: Date }>
+    try {
+      result = await query<{ id: string; created_at: Date }>(
+        `INSERT INTO capability_skill_runs (
+           workspace_id, capability_id, actor_person_id, version, status, input, output,
+           provenance_path, skill_runs, citations, decision_trace, idempotency_key
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         RETURNING id, created_at`,
+        [workspaceId, row.id, actor.id, row.current_version, execution.status, input, execution.output,
+          JSON.stringify(provenancePath), JSON.stringify(execution.skillRuns), JSON.stringify(execution.citations),
+          JSON.stringify(execution.decisionTrace), idempotencyKey]
+      )
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error
+      const raced = await query<{ id: string }>(
+        `SELECT id FROM capability_skill_runs
+         WHERE workspace_id = $1 AND capability_id = $2 AND idempotency_key = $3`,
+        [workspaceId, row.id, idempotencyKey]
+      )
+      const persisted = raced.rows[0] ? await this.getRun(workspaceId, raced.rows[0].id, actor) : null
+      if (persisted && persisted !== 'denied') return persisted
+      throw error
+    }
     await query(
       `UPDATE capability_assets SET usage_count = usage_count + 1, last_used_at = now(), updated_at = now()
        WHERE id = $1`,
       [row.id]
     )
-    await this.audit(workspaceId, actor.id, row.id, 'run', 'allow', { version: row.current_version })
+    await this.audit(workspaceId, actor.id, row.id, 'run', 'allow', {
+      version: row.current_version,
+      status: execution.status,
+      paymentBatchId: execution.output.paymentBatchId,
+      amountPaid: execution.output.amountPaid,
+      idempotencyKey,
+    })
     const run = requiredRow(result.rows[0])
     return {
       id: run.id,
       assetKey,
       version: row.current_version,
       actorId: actor.id,
-      status: 'completed',
+      status: execution.status,
       input: { ...input },
-      output,
+      output: execution.output,
+      skillRuns: execution.skillRuns,
+      citations: execution.citations,
+      decisionTrace: execution.decisionTrace,
       provenancePath,
       createdAt: run.created_at.toISOString(),
     }
@@ -409,13 +488,17 @@ export default class CapabilitiesRepository {
       status: CapabilitySkillRun['status']
       input: CapabilitySkillRun['input']
       output: CapabilitySkillRun['output']
+      skill_runs: CapabilitySkillRun['skillRuns']
+      citations: CapabilitySkillRun['citations']
+      decision_trace: CapabilitySkillRun['decisionTrace']
       provenance_path: string[]
       created_at: Date
       classification: CapabilityClassification
       owner_team_id: string
     }>(
       `SELECT r.id, a.asset_key, r.version, r.actor_person_id, r.status, r.input, r.output,
-              r.provenance_path, r.created_at, a.classification, a.owner_team_id
+              r.skill_runs, r.citations, r.decision_trace, r.provenance_path, r.created_at,
+              a.classification, a.owner_team_id
        FROM capability_skill_runs r JOIN capability_assets a ON a.id = r.capability_id
        WHERE r.workspace_id = $1 AND r.id = $2`,
       [workspaceId, runId]
@@ -431,6 +514,9 @@ export default class CapabilitiesRepository {
       status: row.status,
       input: row.input,
       output: row.output,
+      skillRuns: row.skill_runs,
+      citations: row.citations,
+      decisionTrace: row.decision_trace,
       provenancePath: row.provenance_path,
       createdAt: row.created_at.toISOString(),
     }
@@ -469,24 +555,25 @@ export default class CapabilitiesRepository {
   }
 
   async departureScenario(workspaceId: string, actor: DemoActor): Promise<CapabilityDepartureScenario> {
-    const search = await this.search(workspaceId, actor, { query: 'prepare weekly property operations digest', limit: 3 })
-    const discoverable = search.some((item) => item.asset?.assetKey === 'ast-014')
-    const provenancePath = await this.provenancePath(workspaceId, 'ast-014')
-    const stewardshipAccepted = provenancePath.includes('STEWARDED_BY Dara Kim')
-    const authorshipIntact = provenancePath.includes('AUTHORED_BY Mai Tran')
+    const search = await this.search(workspaceId, actor, { query: 'weekly AP run', limit: 3 })
+    const discoverable = search.some((item) => item.asset?.assetKey === DEMO_CAPABILITY_KEY)
+    const provenancePath = await this.provenancePath(workspaceId, DEMO_CAPABILITY_KEY)
+    const stewardshipAccepted = provenancePath.includes('STEWARDED_BY Laura Nguyen')
+    const authorshipIntact = provenancePath.includes('AUTHORED_BY Magdalene Choong')
     return {
       passed: discoverable && stewardshipAccepted && authorshipIntact,
       discoverable,
       stewardshipAccepted,
       runnable: discoverable,
       authorshipIntact,
-      outputDigest: '3 urgent work orders need attention; 5 resident follow-ups are ready for action.',
+      outputDigest: '3 approved bills totaling $18,910.00 paid; ending operating cash $33,850.00.',
       provenancePath,
     }
   }
 
   async seedDemo(workspaceId: string): Promise<void> {
     await transaction(async (client) => {
+      await removeLegacySeed(client, workspaceId)
       for (const team of demoTeams) {
         await client.query(
           `INSERT INTO capability_teams (id, workspace_id, name, department) VALUES ($1,$2,$3,$4)
@@ -532,7 +619,7 @@ export default class CapabilitiesRepository {
            RETURNING id`,
           [workspaceId, capability.assetKey, `seed-${capability.assetKey}`, capability.type, capability.title,
             capability.summary, capability.content, capability.rationale, capability.classification,
-            capability.ownerTeamId, capability.version, capability.outcomeScore, capability.usageCount, 'person-mai-tran']
+            capability.ownerTeamId, capability.version, capability.outcomeScore, capability.usageCount, DEMO_AUTHOR_ID]
         )
         const assetId = requiredRow(assetResult.rows[0]).id
         await client.query(
@@ -559,22 +646,28 @@ export default class CapabilitiesRepository {
         await client.query(
           `INSERT INTO capability_versions (
              workspace_id, capability_id, version, change_notes, snapshot, created_by_person_id, approved_by_person_id, created_at
-           ) VALUES ($1,$2,$3,$4,$5,'person-mai-tran','person-alisa-ng','2026-06-14T03:00:00Z')
-           ON CONFLICT (capability_id, version) DO UPDATE SET snapshot = EXCLUDED.snapshot`,
-          [workspaceId, assetId, capability.version, 'Approved clean-room demo version.', capability]
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,'2026-06-14T03:00:00Z')
+           ON CONFLICT (capability_id, version) DO UPDATE SET
+             change_notes = EXCLUDED.change_notes, snapshot = EXCLUDED.snapshot,
+             created_by_person_id = EXCLUDED.created_by_person_id,
+             approved_by_person_id = EXCLUDED.approved_by_person_id`,
+          [workspaceId, assetId, capability.version, 'Approved property-accounting capability version.', capability,
+            DEMO_AUTHOR_ID, DEMO_GOVERNANCE_ID]
         )
       }
 
-      const astId = await assetIdFor(client, workspaceId, 'ast-014')
-      const promptId = await assetIdFor(client, workspaceId, 'prompt-014')
-      const agentId = await assetIdFor(client, workspaceId, 'agent-014')
-      const skillId = await assetIdFor(client, workspaceId, 'skill-014')
+      const capabilityId = await assetIdFor(client, workspaceId, DEMO_CAPABILITY_KEY)
+      const skillAssets = demoCapabilities.filter((item) => item.type === 'skill')
       const edgeRows: Array<[string, string, string, string, string]> = [
-        ['AUTHORED_BY', 'person', 'person-mai-tran', 'Mai Tran', 'Workflow v3.2 was authored by Mai before departure.'],
-        ['STEWARDED_BY', 'person', 'person-dara-kim', 'Dara Kim', 'Dara accepted stewardship after Mai’s departure.'],
-        ['DEPENDS_ON', 'capability', 'prompt-014', 'Property Operations Digest Prompt', 'Workflow v3.2 uses prompt-014.'],
-        ['DEPENDS_ON', 'capability', 'agent-014', 'Property Operations Health Agent', 'Workflow v3.2 uses agent-014.'],
-        ['DEPENDS_ON', 'capability', 'skill-014', 'Run Property Operations Digest', 'Workflow v3.2 runs skill-014.'],
+        ['AUTHORED_BY', 'person', DEMO_AUTHOR_ID, 'Magdalene Choong', 'Magdalene authored and proved the weekly AP capability before the fictional departure event.'],
+        ['STEWARDED_BY', 'person', DEMO_SUCCESSOR_ID, 'Laura Nguyen', 'Laura accepted stewardship and installed the approved version on day one.'],
+        ...skillAssets.map((skill): [string, string, string, string, string] => [
+          'DEPENDS_ON',
+          'capability',
+          skill.assetKey,
+          skill.title,
+          `Weekly AP Run ${demoCapabilities[0]?.version ?? 'v4.0'} executes ${skill.assetKey}.`,
+        ]),
       ]
       for (const [edgeType, targetKind, targetKey, targetLabel, evidence] of edgeRows) {
         await client.query(
@@ -583,53 +676,124 @@ export default class CapabilitiesRepository {
            ) VALUES ($1,$2,$3,$4,$5,$6,$7,'2026-07-08T04:00:00Z')
            ON CONFLICT (capability_id, edge_type, target_kind, target_key) DO UPDATE SET
              target_label = EXCLUDED.target_label, evidence = EXCLUDED.evidence`,
-          [workspaceId, astId, edgeType, targetKind, targetKey, targetLabel, evidence]
+          [workspaceId, capabilityId, edgeType, targetKind, targetKey, targetLabel, evidence]
         )
       }
-      for (const [childId, label] of [[promptId, 'Property Operations Digest Prompt'], [agentId, 'Property Operations Health Agent'], [skillId, 'Run Property Operations Digest']] as const) {
+      for (const skill of skillAssets) {
+        const childId = await assetIdFor(client, workspaceId, skill.assetKey)
         await client.query(
           `INSERT INTO capability_edges (workspace_id, capability_id, edge_type, target_kind, target_key, target_label, evidence)
-           VALUES ($1,$2,'AUTHORED_BY','person','person-mai-tran','Mai Tran',$3)
-           ON CONFLICT (capability_id, edge_type, target_kind, target_key) DO UPDATE SET evidence = EXCLUDED.evidence`,
-          [workspaceId, childId, `${label} was authored by Mai Tran.`]
+           VALUES ($1,$2,'AUTHORED_BY','person',$3,'Magdalene Choong',$4)
+           ON CONFLICT (capability_id, edge_type, target_kind, target_key) DO UPDATE SET
+             target_label = EXCLUDED.target_label, evidence = EXCLUDED.evidence`,
+          [workspaceId, childId, DEMO_AUTHOR_ID, `${skill.title} was authored by Magdalene Choong.`]
         )
       }
+
+      const evidenceCitations: CapabilityCitation[] = []
+      for (const evidence of demoEvidenceDocuments) {
+        const documentId = await upsertTextDocument(client, workspaceId, evidence.name, evidence.content)
+        await client.query(
+          `INSERT INTO capability_asset_documents (capability_id, document_id, relationship)
+           VALUES ($1,$2,$3)
+           ON CONFLICT (capability_id, document_id, relationship) DO NOTHING`,
+          [capabilityId, documentId, evidence.relationship]
+        )
+        const chunk = await client.query<{ id: string; content: string }>(
+          `SELECT id, content FROM document_chunks WHERE workspace_id = $1 AND document_id = $2 ORDER BY chunk_index LIMIT 1`,
+          [workspaceId, documentId]
+        )
+        const firstChunk = requiredRow(chunk.rows[0])
+        evidenceCitations.push({
+          label: `S${evidenceCitations.length + 1}`,
+          documentId,
+          documentName: evidence.name,
+          chunkId: firstChunk.id,
+          excerpt: firstChunk.content.replace(/\s+/g, ' ').slice(0, 420),
+          score: 1,
+          relationship: evidence.relationship,
+        })
+      }
+
       await client.query(
         `INSERT INTO capability_stewardship_assignments (
            workspace_id, capability_id, from_person_id, to_person_id, reason, assigned_at, accepted_at
-         ) VALUES ($1,$2,'person-mai-tran','person-dara-kim',$3,'2026-07-08T02:00:00Z','2026-07-08T04:00:00Z')
+         ) VALUES ($1,$2,$3,$4,$5,'2026-07-08T02:00:00Z','2026-07-08T04:00:00Z')
          ON CONFLICT (capability_id, to_person_id) DO UPDATE SET
            reason = EXCLUDED.reason, accepted_at = EXCLUDED.accepted_at`,
-        [workspaceId, astId, 'Property-operations continuity after Mai Tran’s departure.']
+        [workspaceId, capabilityId, DEMO_AUTHOR_ID, DEMO_SUCCESSOR_ID,
+          'Fictional day-one continuity scenario for the Weekly Accounts Payable Run.']
       )
       await client.query(
         `INSERT INTO capability_decisions (workspace_id, capability_id, decided_by_person_id, decision, rationale, decided_at)
-         SELECT $1,$2,'person-alisa-ng','Approved continuity transfer to Dara Kim',
-                'Dara has team match, clearance, and accepted stewardship.','2026-07-08T03:30:00Z'
-         WHERE NOT EXISTS (SELECT 1 FROM capability_decisions WHERE capability_id = $2 AND decision = 'Approved continuity transfer to Dara Kim')`,
-        [workspaceId, astId]
+         SELECT $1,$2,$3,'Approved day-one AP continuity transfer to Laura Nguyen',
+                'Laura has the accounting-team match, confidential clearance, pinned version, and accepted stewardship.','2026-07-08T03:30:00Z'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM capability_decisions
+           WHERE capability_id = $2 AND decision = 'Approved day-one AP continuity transfer to Laura Nguyen'
+         )`,
+        [workspaceId, capabilityId, DEMO_GOVERNANCE_ID]
       )
       for (const outcome of [
-        ['hours_saved_weekly', 6.5, 'hours'],
-        ['property_follow_up_completion', 0.88, 'ratio'],
+        ['average_run_time', 3.8, 'minutes'],
+        ['approved_payment_accuracy', 1, 'ratio'],
+        ['duplicate_payments', 0, 'count'],
       ] as const) {
         await client.query(
           `INSERT INTO capability_outcomes (workspace_id, capability_id, metric_name, value, unit, measured_at)
            VALUES ($1,$2,$3,$4,$5,'2026-07-04') ON CONFLICT DO NOTHING`,
-          [workspaceId, astId, ...outcome]
+          [workspaceId, capabilityId, ...outcome]
         )
       }
       await client.query(
-        `DELETE FROM capability_outcomes
-         WHERE workspace_id = $1 AND capability_id = $2 AND metric_name = 'owner_action_completion'`,
-        [workspaceId, astId]
+        `INSERT INTO capability_installations (workspace_id, capability_id, actor_person_id, version, installed_at)
+         VALUES ($1,$2,$3,'v4.0','2026-07-08T04:05:00Z')
+         ON CONFLICT (capability_id, actor_person_id, version) DO NOTHING`,
+        [workspaceId, capabilityId, DEMO_SUCCESSOR_ID]
       )
+
+      const historicalSkillRuns = skillAssets.map((skill) => ({
+        skillKey: skill.assetKey,
+        title: skill.title,
+        status: 'completed',
+        detail: `Historical approved run completed ${skill.title.toLowerCase()}.`,
+        output: { verified: true },
+        citationLabels: evidenceCitations.map((citation) => citation.label),
+        startedAt: '2026-07-03T08:00:00.000Z',
+        completedAt: '2026-07-03T08:03:48.000Z',
+      }))
+      const historicalTrace = [
+        { id: 'seed-input', stage: 'input', title: 'Historical AP run accepted', detail: 'Midtown Residential weekly AP run.', outcome: 'accepted', createdAt: '2026-07-03T08:00:00.000Z' },
+        { id: 'seed-retrieval', stage: 'retrieval', title: 'Accounting evidence loaded', detail: 'Loaded the playbook, open AP, cash position, and approvals.', outcome: 'completed', createdAt: '2026-07-03T08:00:05.000Z' },
+        { id: 'seed-execution', stage: 'execution', title: 'Five skills completed', detail: 'Paid three approved bills once and closed the accounting session.', outcome: 'completed', createdAt: '2026-07-03T08:03:40.000Z' },
+        { id: 'seed-response', stage: 'response', title: 'Grounded receipt persisted', detail: 'Stored citations, provenance, decisions, and the payment outcome.', outcome: 'completed', createdAt: '2026-07-03T08:03:48.000Z' },
+      ]
       await client.query(
-        `DELETE FROM capability_teams t
-         WHERE t.workspace_id = $1 AND t.id = 'team-investments'
-           AND NOT EXISTS (SELECT 1 FROM capability_people p WHERE p.team_id = t.id)
-           AND NOT EXISTS (SELECT 1 FROM capability_assets a WHERE a.owner_team_id = t.id)`,
-        [workspaceId]
+         `INSERT INTO capability_skill_runs (
+           workspace_id, capability_id, actor_person_id, version, status, input, output,
+           provenance_path, skill_runs, citations, decision_trace, idempotency_key, created_at
+         )
+         SELECT $1,$2,$3,'v4.0','completed',$4,$5,$6,$7,$8,$9,$10,'2026-07-03T08:03:48Z'
+         WHERE NOT EXISTS (
+           SELECT 1 FROM capability_skill_runs
+           WHERE workspace_id = $1 AND capability_id = $2 AND actor_person_id = $3
+             AND created_at = '2026-07-03T08:03:48Z'
+         )`,
+        [workspaceId, capabilityId, DEMO_AUTHOR_ID,
+          { propertyGroupName: 'Midtown Residential', runDate: '2026-07-03', paymentAccount: 'Midtown Operating ••1842' },
+          {
+            summary: 'Magdalene Choong completed the cited weekly AP run: 3 approved bills totaling $18,910.00 paid; ending cash $33,850.00.',
+            result: 'paid', paymentBatchId: 'AP-HISTORICAL', billsReviewed: 3, billsPaid: 3,
+            amountPaid: 18910, openingBalance: 52760, endingBalance: 33850, reserveBalance: 25000,
+            currency: 'USD', generationMode: 'deterministic-grounded-fallback',
+          },
+          JSON.stringify([DEMO_CAPABILITY_KEY, 'AUTHORED_BY Magdalene Choong', 'STEWARDED_BY Laura Nguyen']),
+          JSON.stringify(historicalSkillRuns), JSON.stringify(evidenceCitations), JSON.stringify(historicalTrace),
+          capabilityRunIdempotencyKey({
+            propertyGroupName: 'Midtown Residential',
+            runDate: '2026-07-03',
+            paymentAccount: 'Midtown Operating ••1842',
+          })]
       )
     })
   }
@@ -709,6 +873,61 @@ export default class CapabilitiesRepository {
   }
 }
 
+async function removeLegacySeed(client: PoolClient, workspaceId: string): Promise<void> {
+  const legacyAssetKeys = ['ast-014', 'prompt-014', 'agent-014', 'skill-014', 'risk-009']
+  const legacyPeople = ['person-mai-tran', 'person-dara-kim', 'person-lee-park', 'person-alisa-ng']
+  const legacyTeams = ['team-property-operations', 'team-risk', 'team-growth', 'team-investments']
+  const assets = await client.query<{ id: string }>(
+    `SELECT id FROM capability_assets WHERE workspace_id = $1 AND asset_key = ANY($2::text[])`,
+    [workspaceId, legacyAssetKeys]
+  )
+  const assetIds = assets.rows.map((row) => row.id)
+  if (assetIds.length) {
+    const documents = await client.query<{ document_id: string }>(
+      `SELECT document_id FROM capability_asset_documents WHERE capability_id = ANY($1::uuid[])`,
+      [assetIds]
+    )
+    for (const table of [
+      'capability_audit_events',
+      'capability_skill_runs',
+      'capability_installations',
+      'capability_outcomes',
+      'capability_decisions',
+      'capability_stewardship_assignments',
+      'capability_edges',
+      'capability_versions',
+      'capability_asset_documents',
+    ]) {
+      await client.query(`DELETE FROM ${table} WHERE capability_id = ANY($1::uuid[])`, [assetIds])
+    }
+    await client.query('DELETE FROM capability_assets WHERE id = ANY($1::uuid[])', [assetIds])
+    const documentIds = documents.rows.map((row) => row.document_id)
+    if (documentIds.length) {
+      await client.query(
+        `DELETE FROM knowledge_documents d
+         WHERE d.workspace_id = $1 AND d.id = ANY($2::uuid[])
+           AND NOT EXISTS (SELECT 1 FROM capability_asset_documents ad WHERE ad.document_id = d.id)`,
+        [workspaceId, documentIds]
+      )
+    }
+  }
+  await client.query(
+    `DELETE FROM capability_audit_events WHERE workspace_id = $1 AND actor_person_id = ANY($2::text[])`,
+    [workspaceId, legacyPeople]
+  )
+  await client.query(
+    `DELETE FROM capability_people WHERE workspace_id = $1 AND id = ANY($2::text[])`,
+    [workspaceId, legacyPeople]
+  )
+  await client.query(
+    `DELETE FROM capability_teams t
+     WHERE t.workspace_id = $1 AND t.id = ANY($2::text[])
+       AND NOT EXISTS (SELECT 1 FROM capability_people p WHERE p.team_id = t.id)
+       AND NOT EXISTS (SELECT 1 FROM capability_assets a WHERE a.owner_team_id = t.id)`,
+    [workspaceId, legacyTeams]
+  )
+}
+
 async function upsertTextDocument(client: PoolClient, workspaceId: string, name: string, content: string): Promise<string> {
   const rawData = Buffer.from(content, 'utf8')
   const checksum = createHash('sha256').update(rawData).digest('hex')
@@ -744,6 +963,12 @@ async function uniqueAssetKey(client: PoolClient, workspaceId: string, title: st
   const key = `${base}-${suffix}`
   const exists = await client.query('SELECT id FROM capability_assets WHERE workspace_id = $1 AND asset_key = $2', [workspaceId, key])
   return exists.rowCount ? `${base}-${suffix}-${Date.now().toString(36)}` : key
+}
+
+function capabilityRunIdempotencyKey(input: RunCapabilityInput): string {
+  return createHash('sha256')
+    .update(`${input.propertyGroupName.trim().toLowerCase()}|${input.runDate}|${input.paymentAccount.trim().toLowerCase()}`)
+    .digest('hex')
 }
 
 async function assetIdFor(client: PoolClient, workspaceId: string, assetKey: string): Promise<string> {

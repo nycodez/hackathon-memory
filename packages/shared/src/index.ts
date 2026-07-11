@@ -39,7 +39,7 @@ export interface Citation {
   score: number
 }
 
-export type DecisionTraceStage = 'input' | 'analysis' | 'embedding' | 'retrieval' | 'selection' | 'response'
+export type DecisionTraceStage = 'input' | 'analysis' | 'embedding' | 'retrieval' | 'selection' | 'governance' | 'planning' | 'execution' | 'verification' | 'response'
 export type DecisionTraceOutcome = 'accepted' | 'completed' | 'no_match' | 'guardrail' | 'error'
 
 export interface DecisionTraceEvent {
@@ -233,9 +233,37 @@ export interface CapabilitySkillRun {
   actorId: string
   status: 'completed' | 'blocked' | 'failed'
   input: Record<string, string | number | boolean>
-  output: Record<string, string | number | boolean>
+  output: CapabilityRunOutput
+  skillRuns: CapabilityRunStep[]
+  citations: CapabilityCitation[]
+  decisionTrace: DecisionTraceEvent[]
   provenancePath: string[]
   createdAt: string
+}
+
+export interface CapabilityRunOutput {
+  summary: string
+  result: 'paid' | 'blocked'
+  paymentBatchId: string
+  billsReviewed: number
+  billsPaid: number
+  amountPaid: number
+  openingBalance: number
+  endingBalance: number
+  reserveBalance: number
+  currency: 'USD'
+  generationMode: 'bedrock-grounded' | 'deterministic-grounded-fallback'
+}
+
+export interface CapabilityRunStep {
+  skillKey: string
+  title: string
+  status: 'completed' | 'blocked' | 'failed'
+  detail: string
+  output: Record<string, string | number | boolean>
+  citationLabels: string[]
+  startedAt: string
+  completedAt: string
 }
 
 export interface CreateCapabilityInput {
@@ -267,10 +295,8 @@ export interface RecommendCapabilitiesInput {
 
 export interface RunCapabilityInput {
   propertyGroupName: string
-  periodStart: string
-  periodEnd: string
-  urgentWorkOrderCount: number
-  residentFollowUpCount: number
+  runDate: string
+  paymentAccount: string
 }
 
 export interface CapabilityDepartureScenario {

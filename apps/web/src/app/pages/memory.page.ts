@@ -54,15 +54,15 @@ interface CapabilityCard {
       <article class="continuity-banner">
         <span aria-hidden="true">◇</span>
         <div>
-          <strong>Mai Tran left. Her property-operations capability did not.</strong>
-          <p>Authorship remains with Mai while stewardship, governance, evidence, and the runnable version transfer to Dara Kim.</p>
+          <strong>In this demo scenario, Magdalene leaves. Her Weekly AP capability does not.</strong>
+          <p>Authorship remains with Magdalene while stewardship, five runnable skills, evidence, and the approved version transfer to Laura Nguyen.</p>
         </div>
       </article>
 
       <div class="memory-toolbar">
         <label class="memory-search-field">
           <span>Search capabilities</span>
-          <input name="memoryQuery" [(ngModel)]="query" placeholder="Try: weekly property operations digest" (keyup.enter)="search()" />
+          <input name="memoryQuery" [(ngModel)]="query" placeholder="Try: weekly AP run" (keyup.enter)="search()" />
         </label>
         <label>
           <span>Viewing as</span>
@@ -165,7 +165,7 @@ export class MemoryPage implements OnInit {
   protected readonly captureBusy = signal(false)
   protected readonly captureError = signal('')
 
-  protected selectedActorId = 'person-dara-kim'
+  protected selectedActorId = 'person-laura-nguyen'
   protected selectedType: CapabilityType | '' = ''
   protected query = ''
   protected capture = this.emptyCapture()
@@ -216,7 +216,7 @@ export class MemoryPage implements OnInit {
 
   protected openCapture(): void {
     const actor = this.actors().find((item) => item.id === this.selectedActorId)
-    this.capture = { ...this.emptyCapture(), ownerTeamId: actor?.teamId ?? 'team-property-operations' }
+    this.capture = { ...this.emptyCapture(), ownerTeamId: actor?.teamId ?? 'team-property-accounting' }
     this.captureError.set('')
     this.captureOpen.set(true)
   }
@@ -318,7 +318,7 @@ export class MemoryPage implements OnInit {
       content: '',
       rationale: '',
       changeNotes: 'Initial organizational memory capture',
-      ownerTeamId: 'team-property-operations',
+      ownerTeamId: 'team-property-accounting',
     }
   }
 }

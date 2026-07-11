@@ -3,8 +3,8 @@ import type { Request } from 'express'
 import type { QueryResultRow } from 'pg'
 import { query } from '../db/pool.js'
 
-const defaultActorId = 'person-dara-kim'
-const allowedActorIds = new Set(['person-dara-kim', 'person-lee-park', 'person-alisa-ng'])
+const defaultActorId = 'person-laura-nguyen'
+const allowedActorIds = new Set(['person-laura-nguyen', 'person-eugene-koon', 'person-denning-tan'])
 
 interface ActorRow extends QueryResultRow {
   id: string

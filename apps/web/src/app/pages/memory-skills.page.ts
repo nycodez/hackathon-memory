@@ -12,7 +12,7 @@ import { MemoryApiService } from '../core/memory-api.service'
   template: `
     <section class="page memory-page">
       <header class="page-header compact-header">
-        <div><span class="eyebrow">Organizational memory</span><h1>Install proven work. Run it with provenance.</h1><p>Every installation is actor-checked and version-pinned. Every run records its capability, version, inputs, output, and lineage.</p></div>
+        <div><span class="eyebrow">Property accounting agent</span><h1>Run the inherited capability on day one.</h1><p>The agent executes five versioned skills, grounds financial facts in the Learning Library, and persists citations, decisions, outcome, and lineage.</p></div>
         <label class="header-selector"><span>Viewing as</span><select name="actor" [(ngModel)]="selectedActorId" (ngModelChange)="actorChanged()">@for (actor of actors(); track actor.id) { <option [value]="actor.id">{{ actor.name }} · {{ actor.role }}</option> }</select></label>
       </header>
 
@@ -37,20 +37,38 @@ import { MemoryApiService } from '../core/memory-api.service'
                 <button class="button primary" type="button" [disabled]="actionBusy()" (click)="install()">{{ actionBusy() ? 'Checking policy…' : 'Install this version' }}</button>
               } @else {
                 <form class="run-form" (ngSubmit)="run()">
-                  <span class="eyebrow">Run installed skill</span>
+                  <span class="eyebrow">Run installed capability</span>
                   <div class="form-grid">
                     <label><span>Property group</span><input name="propertyGroupName" [(ngModel)]="runInput.propertyGroupName" required /></label>
-                    <label><span>Period start</span><input type="date" name="periodStart" [(ngModel)]="runInput.periodStart" required /></label>
-                    <label><span>Period end</span><input type="date" name="periodEnd" [(ngModel)]="runInput.periodEnd" required /></label>
-                    <label><span>Urgent work orders</span><input type="number" min="0" name="urgentWorkOrderCount" [(ngModel)]="runInput.urgentWorkOrderCount" required /></label>
-                    <label><span>Resident follow-ups</span><input type="number" min="0" name="residentFollowUpCount" [(ngModel)]="runInput.residentFollowUpCount" required /></label>
+                    <label><span>Run date</span><input type="date" name="runDate" [(ngModel)]="runInput.runDate" required /></label>
+                    <label><span>Payment account</span><input name="paymentAccount" [(ngModel)]="runInput.paymentAccount" required /></label>
                   </div>
-                  <button class="button primary" type="submit" [disabled]="actionBusy()">{{ actionBusy() ? 'Running…' : 'Run skill' }}</button>
+                  <button class="button primary" type="submit" [disabled]="actionBusy()">{{ actionBusy() ? 'Agent is executing 5 skills…' : 'Run weekly AP capability' }}</button>
                 </form>
               }
 
               @if (runResult()) {
-                <section class="run-result" aria-live="polite"><div><span class="eyebrow">Completed run</span><h3>{{ runResult()?.id }}</h3></div><p>{{ runResult()?.output?.['summary'] }}</p><div class="provenance-path">@for (step of runResult()?.provenancePath ?? []; track step) { <span>{{ step }}</span> }</div></section>
+                <section class="run-result" aria-live="polite">
+                  <header><div><span class="eyebrow">{{ runResult()?.status }} run</span><h3>{{ runResult()?.id }}</h3></div><span class="run-mode">{{ runResult()?.output?.generationMode }}</span></header>
+                  <p>{{ runResult()?.output?.summary }}</p>
+                  <div class="run-facts">
+                    <div><span>Bills paid</span><strong>{{ runResult()?.output?.billsPaid }}</strong></div>
+                    <div><span>Amount paid</span><strong>{{ runResult()?.output?.currency }} {{ runResult()?.output?.amountPaid }}</strong></div>
+                    <div><span>Ending cash</span><strong>{{ runResult()?.output?.currency }} {{ runResult()?.output?.endingBalance }}</strong></div>
+                    <div><span>Batch</span><strong>{{ runResult()?.output?.paymentBatchId }}</strong></div>
+                  </div>
+                  <div class="run-section-heading"><div><span class="eyebrow">Agent execution</span><h4>Capability = 5 skills</h4></div><span>{{ runResult()?.skillRuns?.length }} / 5 recorded</span></div>
+                  <ol class="skill-run-list">
+                    @for (skill of runResult()?.skillRuns ?? []; track skill.skillKey; let index = $index) {
+                      <li [attr.data-status]="skill.status"><span>{{ index + 1 }}</span><div><strong>{{ skill.title }}</strong><p>{{ skill.detail }}</p><small>{{ skill.skillKey }} · citations {{ skill.citationLabels.length ? skill.citationLabels : 'none' }}</small></div><b>{{ skill.status }}</b></li>
+                    }
+                  </ol>
+                  <div class="run-two-column">
+                    <section><div class="run-section-heading"><div><span class="eyebrow">Grounding</span><h4>Learning Library citations</h4></div><a class="text-link" routerLink="/library">Open Library →</a></div><div class="run-citation-list">@for (citation of runResult()?.citations ?? []; track citation.chunkId) { <blockquote><strong>[{{ citation.label }}] {{ citation.documentName }}</strong><span>{{ citation.excerpt }}</span></blockquote> }</div></section>
+                    <section><div class="run-section-heading"><div><span class="eyebrow">Decision log</span><h4>Why the agent acted</h4></div><span>{{ runResult()?.decisionTrace?.length }} events</span></div><div class="run-trace-list">@for (event of runResult()?.decisionTrace ?? []; track event.id) { <div [attr.data-outcome]="event.outcome"><span>{{ event.stage }}</span><strong>{{ event.title }}</strong><small>{{ event.detail }}</small></div> }</div></section>
+                  </div>
+                  <div class="provenance-path">@for (step of runResult()?.provenancePath ?? []; track step) { <span>{{ step }}</span> }</div>
+                </section>
               }
 
               <a class="text-link" [routerLink]="['/memory/assets', detail()?.assetKey]">Review evidence and provenance →</a>
@@ -74,14 +92,12 @@ export class MemorySkillsPage implements OnInit {
   protected readonly loading = signal(true)
   protected readonly actionBusy = signal(false)
   protected readonly error = signal('')
-  protected selectedActorId = 'person-dara-kim'
-  protected selectedAssetKey = 'ast-014'
+  protected selectedActorId = 'person-laura-nguyen'
+  protected selectedAssetKey = 'ap-weekly-run'
   protected runInput: RunCapabilityInput = {
     propertyGroupName: 'Midtown Residential',
-    periodStart: '2026-07-01',
-    periodEnd: '2026-07-07',
-    urgentWorkOrderCount: 3,
-    residentFollowUpCount: 5,
+    runDate: '2026-07-12',
+    paymentAccount: 'Midtown Operating ••1842',
   }
 
   ngOnInit(): void {
@@ -90,7 +106,7 @@ export class MemorySkillsPage implements OnInit {
     ).subscribe({
       next: ({ actors, assets }) => {
         this.actors.set(actors)
-        const runnable = assets.filter((asset) => asset.type === 'workflow' || asset.type === 'skill')
+        const runnable = assets.filter((asset) => asset.type === 'workflow')
         this.runnableAssets.set(runnable)
         if (!runnable.some((asset) => asset.assetKey === this.selectedAssetKey) && runnable[0]) this.selectedAssetKey = runnable[0].assetKey
         this.loadDetail()
@@ -143,7 +159,7 @@ export class MemorySkillsPage implements OnInit {
       finalize(() => this.loading.set(false))
     ).subscribe({
       next: (assets) => {
-        this.runnableAssets.set(assets.filter((asset) => asset.type === 'workflow' || asset.type === 'skill'))
+        this.runnableAssets.set(assets.filter((asset) => asset.type === 'workflow'))
         this.loadDetail()
       },
       error: (error: unknown) => this.error.set(this.api.message(error)),

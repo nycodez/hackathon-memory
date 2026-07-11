@@ -297,4 +297,27 @@ export const migrations = [
         ON capability_audit_events (workspace_id, created_at DESC);
     `,
   },
+  {
+    id: '005_grounded_capability_execution',
+    sql: `
+      ALTER TABLE capability_skill_runs
+        ADD COLUMN IF NOT EXISTS skill_runs jsonb NOT NULL DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS citations jsonb NOT NULL DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS decision_trace jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+      CREATE INDEX IF NOT EXISTS capability_skill_runs_capability_created_idx
+        ON capability_skill_runs (workspace_id, capability_id, created_at DESC);
+    `,
+  },
+  {
+    id: '006_capability_run_idempotency',
+    sql: `
+      ALTER TABLE capability_skill_runs
+        ADD COLUMN IF NOT EXISTS idempotency_key text;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS capability_skill_runs_idempotency_idx
+        ON capability_skill_runs (workspace_id, capability_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL;
+    `,
+  },
 ] as const

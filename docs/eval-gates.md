@@ -2,24 +2,26 @@
 
 ## Recommendation
 
-- The frozen property-operations task returns `ast-014` in the top three accessible results for Dara.
-- At least 8 of 10 deterministic recommendation cases contain an expected capability in the top three.
+- `weekly AP run` returns `ap-weekly-run` in the top three accessible results for Laura.
+- At least 8 of 10 accounting recommendation cases include the capability in the top three.
 
 ## Governance
 
-- All deterministic allow/deny cases match the expected decision.
+- Laura can discover, install, and run the confidential accounting capability.
+- Eugene cannot retrieve its protected content or source chunks.
+- Denning's restricted governance clearance can review it.
 - Direct detail, install, run, and run-detail requests enforce the same policy.
-- Locked results contain approved metadata only and expose zero protected chunks.
+
+## Runnable capability
+
+- One capability has five ordered `DEPENDS_ON` skill edges.
+- The run records all five skill executions and stops before payment if approvals, evidence, cash, or reserve checks fail.
+- The payment batch key is deterministic for property group, date, and payment account.
+- The result includes four permission-checked Learning Library citations and a complete decision trace.
+- Grounded Bedrock creates the cited receipt when configured; the deterministic fallback remains cited and runnable without it.
 
 ## Continuity
 
-- Mai is departed and remains the original author.
-- Dara is an active, accepted steward.
-- Dara can discover, install, and run the current approved version.
-- The run contains an authorship and stewardship provenance path.
-
-## Persistence and reuse
-
-- Captured capability content is stored as a Learning Library document and indexed in `document_chunks`.
-- Reusing a capture request ID or installation key does not create duplicates.
-- Runs persist actor, capability, version, input, output, provenance, and timestamps.
+- The fictional scenario marks Magdalene as departed while preserving her authorship.
+- Laura is the active, accepted steward with the current version installed.
+- The seeded historical run and Laura's new run persist actor, version, inputs, output, skills, citations, decisions, provenance, and timestamps.

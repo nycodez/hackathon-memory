@@ -1,4 +1,4 @@
-import type { CapabilityClassification, DemoActor, RunCapabilityInput } from '@hackathon/shared'
+import type { CapabilityClassification, DemoActor } from '@hackathon/shared'
 
 const clearanceRank: Record<CapabilityClassification, number> = {
   public: 0,
@@ -30,16 +30,5 @@ export function decideCapabilityAccess(actor: DemoActor, asset: GovernedAsset): 
     reason: allowed
       ? `Allowed for ${actor.name} with ${actor.clearance} clearance.`
       : `Denied: ${actor.name} lacks active status, clearance, or team access for ${asset.classification} memory.`,
-  }
-}
-
-export function runPropertyOperationsDigest(input: RunCapabilityInput, actorName: string): Record<string, string | number | boolean> {
-  return {
-    digestTitle: `${input.propertyGroupName} property operations digest`,
-    summary: `${input.urgentWorkOrderCount} urgent work orders need attention; ${input.residentFollowUpCount} resident follow-ups are ready for action.`,
-    urgentWorkOrderCount: input.urgentWorkOrderCount,
-    residentFollowUpCount: input.residentFollowUpCount,
-    period: `${input.periodStart} to ${input.periodEnd}`,
-    nextAction: `Send ${actorName}'s digest to property managers before Monday operations standup.`,
   }
 }

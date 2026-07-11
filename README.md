@@ -2,11 +2,11 @@
 
 Organizational AI Memory built as a governed capability layer on top of the Hackathon Framework Learning Library.
 
-The Learning Library remains the evidence substrate for uploads, extraction, OCR, summaries, chunks, embeddings, hybrid retrieval, citations, conversations, and retrieval traces. Organizational Memory adds reusable capability assets, versions, provenance, stewardship, decisions, outcomes, recommendations, installations, deterministic skill runs, and audit events.
+The Learning Library remains the evidence substrate for uploads, extraction, OCR, summaries, chunks, embeddings, hybrid retrieval, citations, conversations, and retrieval traces. Organizational Memory adds reusable capability assets composed from versioned skills, provenance, stewardship, decisions, outcomes, recommendations, installations, grounded agent runs, and audit events.
 
 ## Killer moment
 
-Mai Tran leaves the property-management company. Dara Kim can still discover Mai's weekly property-operations workflow, understand why it worked, verify its evidence and governance, install the current version, run it, and steward it without erasing Mai's authorship.
+In a fictional departure scenario, CFO Magdalene Choong leaves and Partner Laura Nguyen inherits the Weekly Accounts Payable Run. Laura searches `weekly AP run`, finds the capability with Magdalene's authorship intact, and executes its five skills on day one. The agent cites the Learning Library, pays the approved batch once, records the ending balance, and persists the decision trace.
 
 ## Product surfaces
 
@@ -31,13 +31,15 @@ flowchart TD
   L --> I[Extract, chunk, and embed]
   I --> R[Hybrid retrieval]
   L --> A[Capability asset]
-  A --> G[Versions and provenance]
+  A --> S[Versioned accounting skills]
+  S --> G[Versions and provenance]
   A --> O[Decisions and outcomes]
   P[Server-resolved actor] --> X[Governance prefilter]
   X --> R
   R --> D[Search and recommendations]
-  D --> U[Version-pinned install and run]
-  U --> E[Audit and provenance]
+  D --> U[Version-pinned install]
+  U --> B[Grounded Bedrock agent run]
+  B --> E[Skills, citations, decisions, outcome, audit]
 ```
 
 Canonical content tables are `knowledge_documents`, `document_chunks`, `library_folders`, and `ingestion_events`. The `capability_*` tables add organizational meaning without introducing a parallel document or embedding system.
@@ -51,7 +53,7 @@ See [docs/architecture.md](docs/architecture.md), [docs/demo-script.md](docs/dem
 - Neon PostgreSQL with pgvector for the live Vercel application
 - Dockerized PostgreSQL 17 with pgvector for local development
 - Dependency-free 1,024-dimension feature-hash embeddings for the deterministic path
-- Optional Bedrock query analysis and grounded response generation inherited from the framework
+- Grounded Bedrock query analysis and run-receipt generation, with a cited deterministic fallback
 
 ## Local setup
 
@@ -113,15 +115,15 @@ Every route is workspace-scoped with `x-workspace-id`. Memory routes also resolv
 | `POST` | `/api/memory/search` | Permission-first hybrid capability search |
 | `POST` | `/api/memory/recommendations` | Task-oriented capability recommendations |
 | `POST` | `/api/memory/assets/:assetKey/install` | Idempotent version-pinned installation |
-| `POST` | `/api/memory/assets/:assetKey/runs` | Validated deterministic skill execution |
+| `POST` | `/api/memory/assets/:assetKey/runs` | Grounded multi-skill agent execution |
 | `GET` | `/api/memory/runs/:runId` | Governed persisted run detail |
-| `GET` | `/api/memory/departure-scenario` | Mai-to-Dara continuity proof |
+| `GET` | `/api/memory/departure-scenario` | Magdalene-to-Laura continuity proof |
 
 The base Learning Library, document, conversation, and query routes remain available under `/api`.
 
 ## Clean-room boundary
 
-All people, teams, capabilities, documents, policies, decisions, outcomes, and runs used by the demo are synthetic. The repository must not ingest private Roamstay code, customer content, credentials, or production data.
+The demo uses public GenAI Fund team names and official titles from its team page. The property-management employer, departure event, team assignments, accounting records, capability, evidence, decisions, and runs are fictional clean-room data and do not describe real events. The repository must not ingest private Roamstay code, customer content, credentials, or production data.
 
 ## GitHub destination
 
@@ -132,4 +134,4 @@ The local repository is configured with the new destination as `origin` and the 
 
 ## Production hardening
 
-The demo actor resolver is intentionally limited to a synthetic allowlist. Before accepting real users, add verified authentication, derive workspace membership from the authenticated principal, add durable background ingestion, enforce quotas and malware scanning, and move large raw uploads to object storage.
+The demo actor resolver is intentionally limited to a scenario allowlist. Before accepting real users, add verified authentication, derive workspace membership from the authenticated principal, connect accounting skills to approved provider integrations, require human approval for real payments, add durable background ingestion, enforce quotas and malware scanning, and move large raw uploads to object storage.

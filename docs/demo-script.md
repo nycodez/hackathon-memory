@@ -1,20 +1,23 @@
-# Five-minute demo
+# 60-second demo
 
-## Killer moment
+## Claim
 
-Mai Tran has departed, but Dara Kim can discover, understand, install, run, and steward Mai's property-operations workflow with its evidence and authorship intact.
+**The capability outlived the person and ran on day one.**
+
+The names and official titles come from the public GenAI Fund team page. The departure and property-accounting scenario are fictional: Magdalene Choong is the original author and Laura Nguyen is the successor.
 
 ## Flow
 
-1. Open **Library** and show that capability evidence is stored and indexed by the base Learning Library.
-2. Cross the navigation divider into **Capabilities**.
-3. Search for `weekly property operations digest` as Dara Kim.
-4. Open `ast-014` and show its Learning Library citations, why it worked, authorship, stewardship, decision context, outcome, and version history.
-5. Switch to a lower-clearance actor and show that protected content is withheld.
-6. Open **Recommendations**, submit the frozen property-operations task, and explain why `ast-014` is recommended.
-7. Open **Skills**, install the current version, and run it with the prepared demo inputs.
-8. Finish on the persisted run ID and provenance path proving Mai's authorship survived the transfer to Dara.
+1. **0–10s — Someone leaves.** Open **Capabilities** as Laura. Point to the continuity banner: Magdalene's authorship is immutable; Laura accepted stewardship.
+2. **10–20s — Find it.** Search `weekly AP run`. Open `ap-weekly-run`; show five `DEPENDS_ON` skills, version `v4.0`, decisions, outcomes, and linked Learning Library evidence.
+3. **20–25s — Govern it.** Switch to Eugene to show accounting content is withheld, then return to Laura.
+4. **25–50s — Run it.** Open **Skills** and click **Run weekly AP capability**. The agent executes: open site → check open AP → verify balance → pay approved bills → close session.
+5. **50–60s — Prove it.** Show the persisted run ID, five completed skill records, four citations, decision log, batch ID, $18,910 paid, and $33,850 ending cash. Finish on the provenance path: `AUTHORED_BY Magdalene Choong` → `STEWARDED_BY Laura Nguyen`.
 
-## Frozen task
+## Frozen query
 
-`Draft this week's property-operations digest for the Midtown residential portfolio.`
+`weekly AP run`
+
+## Expected outcome
+
+`3 approved bills totaling $18,910.00 paid once; ending operating cash $33,850.00.`

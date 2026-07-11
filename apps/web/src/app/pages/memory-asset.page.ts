@@ -31,8 +31,8 @@ import { MemoryApiService } from '../core/memory-api.service'
           <a class="button primary" routerLink="/memory/skills">Install or run</a>
         </header>
 
-        @if (asset()?.assetKey === 'ast-014') {
-          <article class="continuity-banner"><span aria-hidden="true">◇</span><div><strong>Mai Tran left on 15 June 2026. Her capability remains operational.</strong><p>Authorship is immutable; Dara Kim accepted stewardship and can run this approved version.</p></div></article>
+        @if (asset()?.assetKey === 'ap-weekly-run') {
+          <article class="continuity-banner"><span aria-hidden="true">◇</span><div><strong>Fictional continuity scenario: Magdalene leaves; the AP capability remains operational.</strong><p>Authorship stays with Magdalene Choong. Laura Nguyen accepted stewardship and can execute all five skills on day one.</p></div></article>
         }
 
         <div class="capability-detail-grid">
@@ -40,7 +40,7 @@ import { MemoryApiService } from '../core/memory-api.service'
           <article class="detail-panel"><span class="eyebrow">Governance</span><h2>{{ asset()?.governance?.decision }}</h2><p>{{ asset()?.governance?.reason }}</p><dl><div><dt>Current steward</dt><dd>{{ asset()?.currentSteward ?? 'Unassigned' }}</dd></div><div><dt>Owner team</dt><dd>{{ asset()?.ownerTeamName }}</dd></div><div><dt>Usage</dt><dd>{{ asset()?.usageCount }}</dd></div></dl></article>
 
           <article class="detail-panel span-two"><span class="eyebrow">Provenance</span><h2>Organizational lineage</h2><div class="provenance-list">@for (edge of asset()?.provenance ?? []; track edge.edgeType + edge.targetKey) { <div><strong>{{ edge.edgeType }}</strong><span>{{ edge.targetLabel }}</span><small>{{ edge.evidence }}</small></div> }</div></article>
-          <article class="detail-panel"><span class="eyebrow">Evidence</span><h2>Learning Library citations</h2><div class="citation-list">@for (citation of asset()?.citations ?? []; track citation.chunkId) { <blockquote><strong>{{ citation.documentName }}</strong><span>{{ citation.excerpt }}</span><small>{{ citation.relationship }} · {{ citation.score }}</small></blockquote> } @empty { <p>No accessible evidence for this actor.</p> }</div></article>
+          <article class="detail-panel"><span class="eyebrow">Evidence</span><h2>Learning Library citations</h2><a class="text-link library-inline-link" routerLink="/library">Open Learning Library →</a><div class="citation-list">@for (citation of asset()?.citations ?? []; track citation.chunkId) { <blockquote><strong>{{ citation.documentName }}</strong><span>{{ citation.excerpt }}</span><small>{{ citation.relationship }} · {{ citation.score }}</small></blockquote> } @empty { <p>No accessible evidence for this actor.</p> }</div></article>
 
           <article class="detail-panel"><span class="eyebrow">Versions</span><h2>Change history</h2><div class="version-list">@for (version of asset()?.versions ?? []; track version.id) { <div><strong>{{ version.version }}</strong><span>{{ version.changeNotes }}</span><small>{{ version.createdBy }} · {{ version.createdAt }}</small></div> }</div></article>
           <article class="detail-panel"><span class="eyebrow">Decisions</span><h2>Decision context</h2><div class="version-list">@for (decision of asset()?.decisions ?? []; track decision.id) { <div><strong>{{ decision.decision }}</strong><span>{{ decision.rationale }}</span><small>{{ decision.decidedBy }}</small></div> } @empty { <p>No linked decisions.</p> }</div></article>
@@ -61,7 +61,7 @@ export class MemoryAssetPage implements OnInit {
   protected readonly asset = signal<CapabilityAssetDetail | null>(null)
   protected readonly loading = signal(true)
   protected readonly error = signal('')
-  protected selectedActorId = 'person-dara-kim'
+  protected selectedActorId = 'person-laura-nguyen'
 
   ngOnInit(): void {
     forkJoin({ actors: this.api.actors(), asset: this.api.asset(this.assetKey, this.selectedActorId) }).pipe(

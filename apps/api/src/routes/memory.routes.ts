@@ -37,13 +37,8 @@ const recommendSchema = z.object({
 })
 const runSchema = z.object({
   propertyGroupName: z.string().trim().min(2).max(120),
-  periodStart: z.string().date(),
-  periodEnd: z.string().date(),
-  urgentWorkOrderCount: z.number().int().min(0).max(10_000),
-  residentFollowUpCount: z.number().int().min(0).max(10_000),
-}).refine((value) => value.periodStart <= value.periodEnd, {
-  message: 'periodStart must be on or before periodEnd',
-  path: ['periodStart'],
+  runDate: z.string().date(),
+  paymentAccount: z.string().trim().min(4).max(120),
 })
 const idSchema = z.string().uuid()
 

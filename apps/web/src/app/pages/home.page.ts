@@ -23,8 +23,8 @@ import { MemoryApiService } from '../core/memory-api.service'
             <span class="eyebrow">Property management memory</span>
             <span class="live-status" [class.degraded]="health()?.status !== 'ok'"><i></i>{{ health()?.status === 'ok' ? 'Memory online' : 'Needs attention' }}</span>
           </div>
-          <h1>Your property teams already know how to do more.</h1>
-          <p>Find proven operating practices across managed properties, preserve their evidence and context, and transfer what works without losing authorship or governance.</p>
+          <h1>Accounting knowledge should outlive the teammate.</h1>
+          <p>Find a proven property-accounting capability, inherit its skills and evidence, and run it on day one without losing authorship, decisions, or governance.</p>
         </div>
         <div class="home-hero-actions">
           <a class="button primary" routerLink="/memory">Find a capability <span aria-hidden="true">→</span></a>
@@ -82,8 +82,8 @@ import { MemoryApiService } from '../core/memory-api.service'
           </article>
 
           <article class="home-widget continuity-widget" [class.passed]="departure()?.passed">
-            <header><div><span class="eyebrow">Continuity proof</span><h2>Mai left. Property operations kept moving.</h2></div><span class="continuity-state">{{ departure()?.passed ? 'Verified' : 'Review' }}</span></header>
-            <p>The original author remains credited while Dara inherits stewardship and a governed path to reuse across managed properties.</p>
+            <header><div><span class="eyebrow">Continuity proof</span><h2>The teammate left. Weekly AP still ran.</h2></div><span class="continuity-state">{{ departure()?.passed ? 'Verified' : 'Review' }}</span></header>
+            <p>Magdalene remains credited while Laura inherits five accounting skills and a governed, runnable path on day one.</p>
             <div class="continuity-path">
               @for (step of departure()?.provenancePath ?? []; track step) {
                 <span>{{ step }}</span>
@@ -104,7 +104,7 @@ import { MemoryApiService } from '../core/memory-api.service'
           </div>
           <div class="home-action-grid">
             <a routerLink="/memory"><span>◇</span><div><strong>Capture or search</strong><small>Save a capability or find prior work with governed citations.</small></div><i>→</i></a>
-            <a routerLink="/memory/recommendations"><span>◎</span><div><strong>Recommend for a task</strong><small>Describe a property-operations task and surface relevant organizational practice.</small></div><i>→</i></a>
+            <a routerLink="/memory/recommendations"><span>◎</span><div><strong>Recommend for a task</strong><small>Ask for a weekly AP run and surface the inherited accounting capability.</small></div><i>→</i></a>
             <a routerLink="/memory/skills"><span>▦</span><div><strong>Install and run</strong><small>Pin an approved version and keep the execution provenance.</small></div><i>→</i></a>
             <a routerLink="/library"><span>▱</span><div><strong>Manage evidence</strong><small>Upload the source material that grounds capabilities and answers.</small></div><i>→</i></a>
           </div>
@@ -131,7 +131,7 @@ export class HomePage implements OnInit {
   private readonly api = inject(ApiService)
   private readonly memoryApi = inject(MemoryApiService)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly demoActorId = 'person-dara-kim'
+  private readonly demoActorId = 'person-laura-nguyen'
 
   protected readonly loading = signal(true)
   protected readonly error = signal('')
@@ -154,7 +154,7 @@ export class HomePage implements OnInit {
       finalize(() => this.loading.set(false))
     ).subscribe({
       next: ({ dashboard, health, memorySummary, departure, assets }) => {
-        const spotlight = assets.find((asset) => asset.assetKey === 'ast-014') ?? assets[0] ?? null
+        const spotlight = assets.find((asset) => asset.assetKey === 'ap-weekly-run') ?? assets[0] ?? null
         this.dashboard.set(dashboard)
         this.health.set(health)
         this.memorySummary.set(memorySummary)
