@@ -12,9 +12,9 @@ import { ApiService } from '../core/api.service'
   template: `
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" routerLink="/" aria-label="Knowledge Workspace home">
-          <span class="brand-mark">K</span>
-          <span class="brand-copy"><strong>Knowledge</strong><small>Workspace</small></span>
+        <a class="brand" routerLink="/" aria-label="Organizational Memory home">
+          <span class="brand-mark">M</span>
+          <span class="brand-copy"><small>Organizational</small><strong>Memory</strong></span>
         </a>
 
         <nav aria-label="Primary navigation">

@@ -32,9 +32,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 24px 18px; color: #fff; background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border); display: flex; flex-direction: column; z-index: 5; }
 .brand { display: flex; gap: 12px; align-items: center; padding: 0 8px 28px; text-decoration: none; }
 .brand-mark { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: #111116; background: #fff; font-size: 18px; font-weight: 650; box-shadow: 0 8px 22px rgba(0,0,0,.28); }
-.brand-copy { display: grid; line-height: 1.2; }
-.brand-copy strong { color: #fff; font-size: 15px; font-weight: 600; }
-.brand-copy small { color: #92929c; font-size: 11px; }
+.brand-copy { display: grid; line-height: 1.05; }
+.brand-copy strong { color: #fff; font-size: 18px; font-weight: 650; letter-spacing: -.02em; }
+.brand-copy small { color: #92929c; font-size: 9px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .sidebar nav { display: grid; gap: 8px; }
 .sidebar nav a { min-height: 50px; padding: 0 14px; border-radius: 12px; display: flex; align-items: center; gap: 14px; color: var(--sidebar-text); text-decoration: none; font-size: 15px; font-weight: 520; transition: color 140ms ease, background 140ms ease, transform 140ms ease, box-shadow 140ms ease; }
 .sidebar nav a svg { flex: 0 0 auto; width: 24px; height: 24px; color: var(--sidebar-icon); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
