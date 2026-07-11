@@ -1,9 +1,7 @@
+import type { Request, Response } from 'express'
 import app from '../apps/api/src/app.js'
 
-export default function handler(
-  request: Parameters<typeof app>[0],
-  response: Parameters<typeof app>[1]
-): void {
+export default function handler(request: Request, response: Response): void {
   const url = new URL(request.url, 'http://localhost')
   const path = url.searchParams.get('__path')
 

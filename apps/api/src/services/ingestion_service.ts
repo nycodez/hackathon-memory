@@ -28,15 +28,14 @@ export default class IngestionService {
       let text = extraction.text
 
       if (extraction.requiresOcr) {
-        const ocrText = await ocrDocument(document)
-        if (!ocrText) {
+        text = await ocrDocument(document)
+        if (!text) {
           await this.documents.setStage(workspaceId, documentId, 'needs_ocr', {
             requiresOcr: true,
             error: 'OCR is required. Configure ANTHROPIC_API_KEY and process the file again.',
           })
           return this.documents.get(workspaceId, documentId)
         }
-        text = ocrText
       }
 
       const normalized = normalizeText(text)

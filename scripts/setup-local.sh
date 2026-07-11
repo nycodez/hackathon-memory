@@ -13,5 +13,4 @@ until docker compose exec -T postgres pg_isready -U postgres -d hackathon >/dev/
 done
 
 pnpm db:migrate
-pnpm db:seed:memory
-echo "Local pgvector database and organizational memory demo are ready on localhost:5435."
+echo "Local pgvector database is ready on localhost:5433."

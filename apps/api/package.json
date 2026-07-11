@@ -7,9 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "migrate": "tsx scripts/migrate.ts",
-    "seed:memory": "tsx scripts/seed-memory.ts",
-    "test:memory": "tsx --test test/memory_eval.test.ts"
+    "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@hackathon/shared": "workspace:*",

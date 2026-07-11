@@ -8,10 +8,6 @@ const routes: Routes = [
   { path: 'query/:conversationId', title: 'Conversation · Knowledge Workspace', loadComponent: () => import('./pages/query.page').then((module) => module.QueryPage) },
   { path: 'results', title: 'Results · Knowledge Workspace', loadComponent: () => import('./pages/results.page').then((module) => module.ResultsPage) },
   { path: 'library', title: 'Library · Knowledge Workspace', loadComponent: () => import('./pages/library.page').then((module) => module.LibraryPage) },
-  { path: 'memory', title: 'Capabilities · Memory Workspace', loadComponent: () => import('./pages/memory.page').then((module) => module.MemoryPage) },
-  { path: 'memory/recommendations', title: 'Recommendations · Memory Workspace', loadComponent: () => import('./pages/memory-recommendations.page').then((module) => module.MemoryRecommendationsPage) },
-  { path: 'memory/skills', title: 'Skills · Memory Workspace', loadComponent: () => import('./pages/memory-skills.page').then((module) => module.MemorySkillsPage) },
-  { path: 'memory/assets/:assetKey', title: 'Capability · Memory Workspace', loadComponent: () => import('./pages/memory-asset.page').then((module) => module.MemoryAssetPage) },
   { path: 'files', redirectTo: 'library', pathMatch: 'full' },
   { path: '**', redirectTo: '' },
 ]
