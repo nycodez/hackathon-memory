@@ -66,15 +66,9 @@ import { ApiService } from '../core/api.service'
       </form>
 
       <div class="decision-console" role="log" aria-live="polite" data-readonly="true" aria-label="Decision console">
-        <header class="console-header">
-          <div><span class="console-kicker">Read only</span><h2>Decision Console</h2></div>
-          <span class="console-mode" [class.is-live]="sending()"><i></i>{{ sending() ? 'Running' : 'Recorded' }}</span>
-        </header>
-        <p class="console-disclosure">Observable system decisions and retrieval events. Hidden model reasoning is never displayed.</p>
-
         <div class="console-events">
           @if (!displayedTrace().length) {
-            <div class="console-empty"><span>›_</span><p>Submit a query to see the decision flow.</p></div>
+            <div class="console-empty"><span>›_</span></div>
           } @else {
             @for (event of displayedTrace(); track event.id; let index = $index) {
               <article class="console-event" [attr.data-outcome]="event.outcome">
@@ -88,7 +82,6 @@ import { ApiService } from '../core/api.service'
             }
           }
         </div>
-        <footer>Persisted with the latest assistant message</footer>
       </div>
     </section>
   `,
