@@ -12,7 +12,6 @@ export function getPool(): Pool {
       max: Number(process.env.PG_POOL_MAX ?? 5),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
-      options: '-c statement_timeout=15000',
       ssl: useDatabaseSsl() ? { rejectUnauthorized: false } : undefined,
     })
   }
@@ -41,4 +40,3 @@ export async function transaction<T>(work: (client: PoolClient) => Promise<T>): 
     client.release()
   }
 }
-
