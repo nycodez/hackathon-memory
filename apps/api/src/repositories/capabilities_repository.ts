@@ -18,7 +18,7 @@ import type {
 import type { PoolClient, QueryResultRow } from 'pg'
 import { query, transaction } from '../db/pool.js'
 import { demoCapabilities, demoPeople, demoTeams } from '../data/capability_demo_data.js'
-import { decideCapabilityAccess, runPortfolioDigest } from '../services/capability_policy_service.js'
+import { decideCapabilityAccess, runPropertyOperationsDigest } from '../services/capability_policy_service.js'
 import { embedText, toVectorLiteral } from '../services/vector_service.js'
 
 interface AssetRow extends QueryResultRow {
@@ -372,7 +372,7 @@ export default class CapabilitiesRepository {
 
     const provenancePath = await this.provenancePath(workspaceId, assetKey === 'skill-014' ? 'ast-014' : assetKey)
     if (assetKey === 'skill-014') provenancePath.push('DEPENDS_ON skill-014')
-    const output = runPortfolioDigest(input, actor.name)
+    const output = runPropertyOperationsDigest(input, actor.name)
     const result = await query<{ id: string; created_at: Date }>(
       `INSERT INTO capability_skill_runs (
          workspace_id, capability_id, actor_person_id, version, status, input, output, provenance_path
@@ -469,7 +469,7 @@ export default class CapabilitiesRepository {
   }
 
   async departureScenario(workspaceId: string, actor: DemoActor): Promise<CapabilityDepartureScenario> {
-    const search = await this.search(workspaceId, actor, { query: 'prepare weekly portfolio health digest', limit: 3 })
+    const search = await this.search(workspaceId, actor, { query: 'prepare weekly property operations digest', limit: 3 })
     const discoverable = search.some((item) => item.asset?.assetKey === 'ast-014')
     const provenancePath = await this.provenancePath(workspaceId, 'ast-014')
     const stewardshipAccepted = provenancePath.includes('STEWARDED_BY Dara Kim')
@@ -480,7 +480,7 @@ export default class CapabilitiesRepository {
       stewardshipAccepted,
       runnable: discoverable,
       authorshipIntact,
-      outputDigest: '3 accounts need attention; 5 owner asks are ready for follow-up.',
+      outputDigest: '3 urgent work orders need attention; 5 resident follow-ups are ready for action.',
       provenancePath,
     }
   }
@@ -504,6 +504,13 @@ export default class CapabilitiesRepository {
         )
       }
       for (const capability of demoCapabilities) {
+        const previousDocuments = await client.query<{ document_id: string }>(
+          `SELECT ad.document_id
+           FROM capability_asset_documents ad
+           JOIN capability_assets a ON a.id = ad.capability_id
+           WHERE a.workspace_id = $1 AND a.asset_key = $2 AND ad.relationship = 'primary_artifact'`,
+          [workspaceId, capability.assetKey]
+        )
         const documentId = await upsertTextDocument(
           client,
           workspaceId,
@@ -534,6 +541,22 @@ export default class CapabilitiesRepository {
           [assetId, documentId]
         )
         await client.query(
+          `DELETE FROM capability_asset_documents
+           WHERE capability_id = $1 AND relationship = 'primary_artifact' AND document_id <> $2`,
+          [assetId, documentId]
+        )
+        const obsoleteDocumentIds = previousDocuments.rows
+          .map((row) => row.document_id)
+          .filter((id) => id !== documentId)
+        if (obsoleteDocumentIds.length) {
+          await client.query(
+            `DELETE FROM knowledge_documents d
+             WHERE d.workspace_id = $1 AND d.id = ANY($2::uuid[])
+               AND NOT EXISTS (SELECT 1 FROM capability_asset_documents ad WHERE ad.document_id = d.id)`,
+            [workspaceId, obsoleteDocumentIds]
+          )
+        }
+        await client.query(
           `INSERT INTO capability_versions (
              workspace_id, capability_id, version, change_notes, snapshot, created_by_person_id, approved_by_person_id, created_at
            ) VALUES ($1,$2,$3,$4,$5,'person-mai-tran','person-alisa-ng','2026-06-14T03:00:00Z')
@@ -549,22 +572,25 @@ export default class CapabilitiesRepository {
       const edgeRows: Array<[string, string, string, string, string]> = [
         ['AUTHORED_BY', 'person', 'person-mai-tran', 'Mai Tran', 'Workflow v3.2 was authored by Mai before departure.'],
         ['STEWARDED_BY', 'person', 'person-dara-kim', 'Dara Kim', 'Dara accepted stewardship after Mai’s departure.'],
-        ['DEPENDS_ON', 'capability', 'prompt-014', 'Portfolio Digest Prompt', 'Workflow v3.2 uses prompt-014.'],
-        ['DEPENDS_ON', 'capability', 'agent-014', 'Portfolio Health Agent', 'Workflow v3.2 uses agent-014.'],
-        ['DEPENDS_ON', 'capability', 'skill-014', 'Run Portfolio Health Digest', 'Workflow v3.2 runs skill-014.'],
+        ['DEPENDS_ON', 'capability', 'prompt-014', 'Property Operations Digest Prompt', 'Workflow v3.2 uses prompt-014.'],
+        ['DEPENDS_ON', 'capability', 'agent-014', 'Property Operations Health Agent', 'Workflow v3.2 uses agent-014.'],
+        ['DEPENDS_ON', 'capability', 'skill-014', 'Run Property Operations Digest', 'Workflow v3.2 runs skill-014.'],
       ]
       for (const [edgeType, targetKind, targetKey, targetLabel, evidence] of edgeRows) {
         await client.query(
           `INSERT INTO capability_edges (
              workspace_id, capability_id, edge_type, target_kind, target_key, target_label, evidence, created_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,'2026-07-08T04:00:00Z') ON CONFLICT DO NOTHING`,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,'2026-07-08T04:00:00Z')
+           ON CONFLICT (capability_id, edge_type, target_kind, target_key) DO UPDATE SET
+             target_label = EXCLUDED.target_label, evidence = EXCLUDED.evidence`,
           [workspaceId, astId, edgeType, targetKind, targetKey, targetLabel, evidence]
         )
       }
-      for (const [childId, label] of [[promptId, 'Portfolio Digest Prompt'], [agentId, 'Portfolio Health Agent'], [skillId, 'Run Portfolio Health Digest']] as const) {
+      for (const [childId, label] of [[promptId, 'Property Operations Digest Prompt'], [agentId, 'Property Operations Health Agent'], [skillId, 'Run Property Operations Digest']] as const) {
         await client.query(
           `INSERT INTO capability_edges (workspace_id, capability_id, edge_type, target_kind, target_key, target_label, evidence)
-           VALUES ($1,$2,'AUTHORED_BY','person','person-mai-tran','Mai Tran',$3) ON CONFLICT DO NOTHING`,
+           VALUES ($1,$2,'AUTHORED_BY','person','person-mai-tran','Mai Tran',$3)
+           ON CONFLICT (capability_id, edge_type, target_kind, target_key) DO UPDATE SET evidence = EXCLUDED.evidence`,
           [workspaceId, childId, `${label} was authored by Mai Tran.`]
         )
       }
@@ -572,8 +598,9 @@ export default class CapabilitiesRepository {
         `INSERT INTO capability_stewardship_assignments (
            workspace_id, capability_id, from_person_id, to_person_id, reason, assigned_at, accepted_at
          ) VALUES ($1,$2,'person-mai-tran','person-dara-kim',$3,'2026-07-08T02:00:00Z','2026-07-08T04:00:00Z')
-         ON CONFLICT (capability_id, to_person_id) DO UPDATE SET accepted_at = EXCLUDED.accepted_at`,
-        [workspaceId, astId, 'Founder-mode continuity after Mai Tran departure.']
+         ON CONFLICT (capability_id, to_person_id) DO UPDATE SET
+           reason = EXCLUDED.reason, accepted_at = EXCLUDED.accepted_at`,
+        [workspaceId, astId, 'Property-operations continuity after Mai Tran’s departure.']
       )
       await client.query(
         `INSERT INTO capability_decisions (workspace_id, capability_id, decided_by_person_id, decision, rationale, decided_at)
@@ -584,7 +611,7 @@ export default class CapabilitiesRepository {
       )
       for (const outcome of [
         ['hours_saved_weekly', 6.5, 'hours'],
-        ['owner_action_completion', 0.88, 'ratio'],
+        ['property_follow_up_completion', 0.88, 'ratio'],
       ] as const) {
         await client.query(
           `INSERT INTO capability_outcomes (workspace_id, capability_id, metric_name, value, unit, measured_at)
@@ -592,6 +619,18 @@ export default class CapabilitiesRepository {
           [workspaceId, astId, ...outcome]
         )
       }
+      await client.query(
+        `DELETE FROM capability_outcomes
+         WHERE workspace_id = $1 AND capability_id = $2 AND metric_name = 'owner_action_completion'`,
+        [workspaceId, astId]
+      )
+      await client.query(
+        `DELETE FROM capability_teams t
+         WHERE t.workspace_id = $1 AND t.id = 'team-investments'
+           AND NOT EXISTS (SELECT 1 FROM capability_people p WHERE p.team_id = t.id)
+           AND NOT EXISTS (SELECT 1 FROM capability_assets a WHERE a.owner_team_id = t.id)`,
+        [workspaceId]
+      )
     })
   }
 

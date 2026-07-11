@@ -33,13 +33,13 @@ export function decideCapabilityAccess(actor: DemoActor, asset: GovernedAsset): 
   }
 }
 
-export function runPortfolioDigest(input: RunCapabilityInput, actorName: string): Record<string, string | number | boolean> {
+export function runPropertyOperationsDigest(input: RunCapabilityInput, actorName: string): Record<string, string | number | boolean> {
   return {
-    digestTitle: `${input.portfolioName} health digest`,
-    summary: `${input.atRiskCount} accounts need attention; ${input.ownerAskCount} owner asks are ready for follow-up.`,
-    atRiskCount: input.atRiskCount,
-    ownerAskCount: input.ownerAskCount,
+    digestTitle: `${input.propertyGroupName} property operations digest`,
+    summary: `${input.urgentWorkOrderCount} urgent work orders need attention; ${input.residentFollowUpCount} resident follow-ups are ready for action.`,
+    urgentWorkOrderCount: input.urgentWorkOrderCount,
+    residentFollowUpCount: input.residentFollowUpCount,
     period: `${input.periodStart} to ${input.periodEnd}`,
-    nextAction: `Send ${actorName}'s digest to portfolio owners before Monday standup.`,
+    nextAction: `Send ${actorName}'s digest to property managers before Monday operations standup.`,
   }
 }

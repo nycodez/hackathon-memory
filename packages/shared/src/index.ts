@@ -266,11 +266,11 @@ export interface RecommendCapabilitiesInput {
 }
 
 export interface RunCapabilityInput {
-  portfolioName: string
+  propertyGroupName: string
   periodStart: string
   periodEnd: string
-  atRiskCount: number
-  ownerAskCount: number
+  urgentWorkOrderCount: number
+  residentFollowUpCount: number
 }
 
 export interface CapabilityDepartureScenario {

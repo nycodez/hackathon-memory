@@ -54,7 +54,7 @@ interface CapabilityCard {
       <article class="continuity-banner">
         <span aria-hidden="true">◇</span>
         <div>
-          <strong>Mai Tran left. Her portfolio health-check capability did not.</strong>
+          <strong>Mai Tran left. Her property-operations capability did not.</strong>
           <p>Authorship remains with Mai while stewardship, governance, evidence, and the runnable version transfer to Dara Kim.</p>
         </div>
       </article>
@@ -62,7 +62,7 @@ interface CapabilityCard {
       <div class="memory-toolbar">
         <label class="memory-search-field">
           <span>Search capabilities</span>
-          <input name="memoryQuery" [(ngModel)]="query" placeholder="Try: weekly portfolio health digest" (keyup.enter)="search()" />
+          <input name="memoryQuery" [(ngModel)]="query" placeholder="Try: weekly property operations digest" (keyup.enter)="search()" />
         </label>
         <label>
           <span>Viewing as</span>
@@ -216,7 +216,7 @@ export class MemoryPage implements OnInit {
 
   protected openCapture(): void {
     const actor = this.actors().find((item) => item.id === this.selectedActorId)
-    this.capture = { ...this.emptyCapture(), ownerTeamId: actor?.teamId ?? 'team-investments' }
+    this.capture = { ...this.emptyCapture(), ownerTeamId: actor?.teamId ?? 'team-property-operations' }
     this.captureError.set('')
     this.captureOpen.set(true)
   }
@@ -318,7 +318,7 @@ export class MemoryPage implements OnInit {
       content: '',
       rationale: '',
       changeNotes: 'Initial organizational memory capture',
-      ownerTeamId: 'team-investments',
+      ownerTeamId: 'team-property-operations',
     }
   }
 }

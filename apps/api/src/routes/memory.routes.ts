@@ -36,11 +36,11 @@ const recommendSchema = z.object({
   limit: z.number().int().min(1).max(10).optional(),
 })
 const runSchema = z.object({
-  portfolioName: z.string().trim().min(2).max(120),
+  propertyGroupName: z.string().trim().min(2).max(120),
   periodStart: z.string().date(),
   periodEnd: z.string().date(),
-  atRiskCount: z.number().int().min(0).max(10_000),
-  ownerAskCount: z.number().int().min(0).max(10_000),
+  urgentWorkOrderCount: z.number().int().min(0).max(10_000),
+  residentFollowUpCount: z.number().int().min(0).max(10_000),
 }).refine((value) => value.periodStart <= value.periodEnd, {
   message: 'periodStart must be on or before periodEnd',
   path: ['periodStart'],

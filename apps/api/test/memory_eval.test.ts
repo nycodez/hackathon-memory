@@ -2,22 +2,22 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { demoCapabilities } from '../src/data/capability_demo_data.js'
 import { demoActor, evaluateDemoDeparture, recommendDemoCapabilities } from '../src/services/capability_eval_service.js'
-import { decideCapabilityAccess, runPortfolioDigest } from '../src/services/capability_policy_service.js'
+import { decideCapabilityAccess, runPropertyOperationsDigest } from '../src/services/capability_policy_service.js'
 import { isAllowlistedDemoActorId, selectDemoActorId } from '../src/services/demo_actor_service.js'
 
 test('recommendation gate returns ast-014 in the top three for at least 8/10 tasks', () => {
   const actor = required(demoActor('person-dara-kim'))
   const tasks = [
-    'prepare weekly portfolio health digest',
-    'find Mai portfolio continuity workflow',
-    'summarize health exceptions and owner asks',
-    'weekly investment portfolio operator report',
-    'create Monday portfolio standup digest',
-    'reuse the portfolio KPI follow-up workflow',
-    'find a skill for at risk accounts',
-    'portfolio action ask report',
-    'owner accountability weekly summary',
-    'preserve departed employee health check knowledge',
+    'prepare weekly property operations digest',
+    'find Mai property continuity workflow',
+    'summarize urgent work orders and resident follow-ups',
+    'weekly residential portfolio operations report',
+    'create Monday property manager standup digest',
+    'reuse the occupancy and delinquency follow-up workflow',
+    'find a skill for maintenance escalations',
+    'property inspection exception report',
+    'resident follow-up accountability summary',
+    'preserve departed employee property operations knowledge',
   ]
   const passing = tasks.filter((task) => recommendDemoCapabilities(task, actor).slice(0, 3).includes('ast-014'))
   assert.ok(passing.length >= 8, `expected at least 8/10, received ${passing.length}/10`)
@@ -50,15 +50,15 @@ test('departure continuity preserves authorship and accepted stewardship', () =>
 })
 
 test('deterministic skill validates the expected output contract', () => {
-  const output = runPortfolioDigest({
-    portfolioName: 'Founder Mode Portfolio',
+  const output = runPropertyOperationsDigest({
+    propertyGroupName: 'Midtown Residential',
     periodStart: '2026-07-01',
     periodEnd: '2026-07-07',
-    atRiskCount: 3,
-    ownerAskCount: 5,
+    urgentWorkOrderCount: 3,
+    residentFollowUpCount: 5,
   }, 'Dara Kim')
-  assert.equal(output.atRiskCount, 3)
-  assert.match(String(output.summary), /5 owner asks/)
+  assert.equal(output.urgentWorkOrderCount, 3)
+  assert.match(String(output.summary), /5 resident follow-ups/)
 })
 
 test('unknown actor headers never inherit Dara identity', () => {

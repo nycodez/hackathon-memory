@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-- The frozen portfolio-digest task returns `ast-014` in the top three accessible results for Dara.
+- The frozen property-operations task returns `ast-014` in the top three accessible results for Dara.
 - At least 8 of 10 deterministic recommendation cases contain an expected capability in the top three.
 
 ## Governance

@@ -14,7 +14,7 @@ import { MemoryApiService } from '../core/memory-api.service'
       <header class="page-header compact-header">
         <div>
           <span class="eyebrow">Organizational memory</span>
-          <h1>Start with what the organization already knows.</h1>
+          <h1>Start with what your property teams already know.</h1>
           <p>Describe a task. Recommendations combine Learning Library evidence, capability provenance, reuse, and measured outcomes after enforcing the current actor's access.</p>
         </div>
       </header>
@@ -38,7 +38,7 @@ import { MemoryApiService } from '../core/memory-api.service'
       @if (error()) {
         <div class="state-card error" role="alert">{{ error() }}</div>
       } @else if (!submitted()) {
-        <div class="memory-callout"><span>✦</span><p>Try the frozen demo task: drafting this week's portfolio health-check digest for the fintech cohort.</p></div>
+        <div class="memory-callout"><span>✦</span><p>Try the frozen demo task: drafting this week's property-operations digest for the Midtown residential portfolio.</p></div>
       } @else if (!recommendations().length) {
         <div class="empty-card"><span>◎</span><h2>No governed match found</h2><p>Add relevant evidence to the Learning Library or broaden the task.</p></div>
       } @else {
@@ -82,7 +82,7 @@ export class MemoryRecommendationsPage implements OnInit {
   protected readonly submitted = signal(false)
   protected readonly error = signal('')
   protected selectedActorId = 'person-dara-kim'
-  protected task = "Draft this week's portfolio health-check digest for the fintech cohort."
+  protected task = "Draft this week's property-operations digest for the Midtown residential portfolio."
 
   ngOnInit(): void {
     this.api.actors().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

@@ -10,7 +10,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
       <aside class="sidebar">
         <a class="brand" routerLink="/" aria-label="Memory Workspace home">
           <span class="brand-mark">M</span>
-          <span class="brand-copy"><strong>Memory</strong><small>Workspace</small></span>
+          <span class="brand-copy"><strong>Memory</strong><small>Property operations</small></span>
         </a>
 
         <nav aria-label="Primary navigation">
@@ -43,7 +43,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
 
         <div class="sidebar-foot">
           <span class="status-dot"></span>
-          <span><strong>Demo workspace</strong><small>Library + capability graph</small></span>
+          <span><strong>Property management</strong><small>Library + capability graph</small></span>
         </div>
       </aside>
 

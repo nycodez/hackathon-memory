@@ -39,11 +39,11 @@ import { MemoryApiService } from '../core/memory-api.service'
                 <form class="run-form" (ngSubmit)="run()">
                   <span class="eyebrow">Run installed skill</span>
                   <div class="form-grid">
-                    <label><span>Portfolio</span><input name="portfolioName" [(ngModel)]="runInput.portfolioName" required /></label>
+                    <label><span>Property group</span><input name="propertyGroupName" [(ngModel)]="runInput.propertyGroupName" required /></label>
                     <label><span>Period start</span><input type="date" name="periodStart" [(ngModel)]="runInput.periodStart" required /></label>
                     <label><span>Period end</span><input type="date" name="periodEnd" [(ngModel)]="runInput.periodEnd" required /></label>
-                    <label><span>At-risk companies</span><input type="number" min="0" name="atRiskCount" [(ngModel)]="runInput.atRiskCount" required /></label>
-                    <label><span>Owner asks</span><input type="number" min="0" name="ownerAskCount" [(ngModel)]="runInput.ownerAskCount" required /></label>
+                    <label><span>Urgent work orders</span><input type="number" min="0" name="urgentWorkOrderCount" [(ngModel)]="runInput.urgentWorkOrderCount" required /></label>
+                    <label><span>Resident follow-ups</span><input type="number" min="0" name="residentFollowUpCount" [(ngModel)]="runInput.residentFollowUpCount" required /></label>
                   </div>
                   <button class="button primary" type="submit" [disabled]="actionBusy()">{{ actionBusy() ? 'Running…' : 'Run skill' }}</button>
                 </form>
@@ -77,11 +77,11 @@ export class MemorySkillsPage implements OnInit {
   protected selectedActorId = 'person-dara-kim'
   protected selectedAssetKey = 'ast-014'
   protected runInput: RunCapabilityInput = {
-    portfolioName: 'Fintech-W26',
+    propertyGroupName: 'Midtown Residential',
     periodStart: '2026-07-01',
     periodEnd: '2026-07-07',
-    atRiskCount: 1,
-    ownerAskCount: 4,
+    urgentWorkOrderCount: 3,
+    residentFollowUpCount: 5,
   }
 
   ngOnInit(): void {

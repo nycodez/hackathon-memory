@@ -6,7 +6,7 @@ The Learning Library remains the evidence substrate for uploads, extraction, OCR
 
 ## Killer moment
 
-Mai Tran leaves the organization. Dara Kim can still discover Mai's portfolio health-check workflow, understand why it worked, verify its evidence and governance, install the current version, run it, and steward it without erasing Mai's authorship.
+Mai Tran leaves the property-management company. Dara Kim can still discover Mai's weekly property-operations workflow, understand why it worked, verify its evidence and governance, install the current version, run it, and steward it without erasing Mai's authorship.
 
 ## Product surfaces
 
