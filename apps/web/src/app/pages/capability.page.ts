@@ -331,9 +331,31 @@ function toRunView(run: CapabilityRun): RunView {
 
 function objectLines(value: Record<string, unknown>): Array<{ label: string; value: string }> {
   return Object.entries(value).slice(0, 8).map(([key, entry]) => ({
-    label: key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' '),
-    value: formatValue(entry),
+    label: formatOutputLabel(key),
+    value: isCentAmount(key) && typeof entry === 'number' ? formatCurrency(entry) : formatValue(entry),
   }))
+}
+
+function formatOutputLabel(key: string): string {
+  const label = key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/ cents$/i, '')
+
+  return label.replace(/\b\w/g, (letter) => letter.toLocaleUpperCase())
+}
+
+function isCentAmount(key: string): boolean {
+  return /(?:Cents|_cents)$/i.test(key)
+}
+
+function formatCurrency(cents: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100)
 }
 
 function formatValue(value: unknown): string {
